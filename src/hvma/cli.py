@@ -188,7 +188,11 @@ def serve(port: int = 8000) -> None:
     """Start the viewer (FastAPI) on http://127.0.0.1:<port>."""
     import uvicorn
 
-    uvicorn.run("viewer.app:app", host="127.0.0.1", port=port, reload=False)
+    # `viewer/` sits at the repo root and is not part of the installed package, and console
+    # scripts don't put the CWD on sys.path, so point uvicorn at the repo root explicitly.
+    repo_root = Path(__file__).resolve().parents[2]
+    uvicorn.run("viewer.app:app", host="127.0.0.1", port=port, reload=False,
+                app_dir=str(repo_root))
 
 
 if __name__ == "__main__":
