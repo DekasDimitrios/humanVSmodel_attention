@@ -4,8 +4,8 @@ Comparing **where people tap when asked to find glitches in AI-generated images*
 [Rapidata](https://rapidata.ai)'s crowd) against **where a CLIP model's saliency lands** when asked
 the same question. The disagreements are the interesting part.
 
-> Status: complete for the offline study (40 images). Entirely cost-free: it uses only
-> Rapidata's public dataset.
+> Status: complete. Offline study on 40 images from Rapidata's public dataset, plus a small live
+> Locate job (12 images, 144 responses) run on the account's free credit.
 
 ## Idea in one paragraph
 
@@ -21,10 +21,13 @@ ignores, and vice versa.
 Rapidata already published human artefact heatmaps in
 [`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback)
 (`coherence_heatmap` column): crowd taps collected with the same kind of Locate task. All results
-here use that dataset, so nothing costs money to reproduce. The repo can also run a fresh
-(paid) Locate job through the Rapidata SDK. That path is verified against the live API, where
-`hvma estimate` uploaded an image, created a job definition and priced it at 0.048 for one image
-with 12 responses, but the job itself was not run.
+use that dataset, so the offline study costs nothing to reproduce.
+
+To check that result against a fresh crowd, 12 of the 40 images also went through a live Locate
+job via the Rapidata SDK: same question, 12 responses per image, 197 taps in total, $0.58 paid
+from the account's free prepaid credit. Rapidata held it for a short manual review
+(`ContentFlagged`) before it ran. The raw responses aren't published (they include labeller
+demographics); see *Live check* below for the results.
 
 ## Setup
 
@@ -49,15 +52,15 @@ hvma evaluate --human dataset
 hvma report && hvma serve  # open http://127.0.0.1:8000
 ```
 
-Optional live job — **costs money, not used for these results**. Needs a Rapidata account:
-log in once with `python -m rapidata login`, or put `RAPIDATA_CLIENT_ID` /
-`RAPIDATA_CLIENT_SECRET` in `.env` (copy `.env.example`):
+Live job — **costs money** (12 images ≈ $0.58). Needs a Rapidata account: log in once with
+`python -m rapidata login`, or put `RAPIDATA_CLIENT_ID` / `RAPIDATA_CLIENT_SECRET` in `.env`:
 
 ```bash
-hvma estimate              # prints the cost; charges nothing
-hvma run --yes             # launches the Locate job and saves results/raw_locate.json
+hvma estimate --limit 12           # prints the cost; charges nothing
+hvma run --yes --limit 12          # launches the job, records it in results/live_job.json
+hvma collect-results --wait        # waits for the crowd -> results/raw_locate.json
 hvma parse-results results/raw_locate.json
-hvma evaluate --human live
+hvma evaluate --human live && hvma report --human live   # writes *_live.* outputs
 ```
 
 ## Findings
@@ -78,8 +81,32 @@ hvma evaluate --human live
   prompt-conditioned, though: it finds the main object, not the glitch, and it still trails the
   centre prior. On these images, no CLIP or DINOv2 map localises glitches the way people do.
 
-Caveats: 40 images; the dataset gives aggregated heatmaps rather than raw taps, so NSS (which
-needs tap points) is not reported; one prompt pair and one CLIP model (ViT-B/16).
+Caveats: 40 images (12 in the live check); the dataset gives aggregated heatmaps rather than raw
+taps, so NSS is only reported for the live check; one prompt pair and one CLIP model (ViT-B/16).
+
+### Live check: a fresh crowd on 12 images
+
+The same question went to a fresh Rapidata crowd (12 responses per image), scored the same way
+(`results/summary_live.csv`, `results/ablation_live.csv`). Since these images also have the
+dataset's heatmap, the dataset crowd can be scored as a "method" predicting the fresh crowd's taps:
+how well one group of people predicts another, a practical ceiling for any model.
+
+| map | cc | pointing | NSS |
+|---|---|---|---|
+| dataset crowd (ceiling) | **0.59** | **1.00** | **1.76** |
+| `dinov2reg_attn` | 0.29 | 0.67 | 0.77 |
+| `center` | 0.29 | 0.33 | 0.70 |
+| `gradcam_l10` | 0.18 | 0.58 | 0.47 |
+| `gradcam` | −0.11 | 0.25 | −0.24 |
+| `rollout` | −0.15 | 0.08 | −0.36 |
+
+- **The human signal replicates.** Two independent crowds agree (cc 0.59), and the dataset
+  crowd's peak falls in the fresh crowd's top region on all 12 images.
+- **So do the model results.** Last-layer Grad-CAM and rollout are again anti-correlated with
+  people and sit on flat, peripheral patches (border mass 0.62–0.63); `gradcam_l10` and the
+  register map are again positive.
+- **The best maps reach about half of the crowd ceiling,** and roughly tie the centre prior.
+  With 12 images these are indicative, not precise.
 
 ### Where humans and the model disagree most
 

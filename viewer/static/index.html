@@ -51,7 +51,8 @@ const fmt = v => (v === null || v === undefined || Number.isNaN(v)) ? '–' : (t
 let DATA = null;
 
 async function load() {
-  const r = await fetch('/api/agreement');
+  const source = new URLSearchParams(location.search).get('source') || 'dataset';
+  const r = await fetch(`/api/agreement?source=${encodeURIComponent(source)}`);
   if (!r.ok) { document.getElementById('status').textContent = await r.text(); return; }
   DATA = await r.json();
   document.getElementById('status').textContent =
@@ -62,7 +63,7 @@ async function load() {
     for (const [label, names] of Object.entries(groups)) {
       if (!names.length) continue;
       const og = document.createElement('optgroup');
-      og.label = label === 'main' ? 'main methods' : 'edge-bias ablation';
+      og.label = {main: 'main methods', ablation: 'edge-bias ablation', reference: 'reference'}[label] || label;
       for (const n of names) og.appendChild(new Option(n, n, false, n === pick));
       sel.appendChild(og);
     }

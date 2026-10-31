@@ -1,8 +1,10 @@
-"""Parser tests against a *synthetic* Locate result — the real schema must be confirmed with
-`hvma parse-results --dump-schema` after the first live job."""
+"""Parser tests against the schema of the first live Locate job (results v4.1.0, SDK 3.27),
+with labeller details redacted."""
+
+import pytest
 
 from hvma.data import Sample
-from hvma.rapidata_job import extract_points, extract_weights, match_results_to_manifest
+from hvma.rapidata_job import extract_taps, match_results_to_manifest
 
 
 def _sample(i: int) -> Sample:
@@ -10,20 +12,31 @@ def _sample(i: int) -> Sample:
                   height=100)
 
 
-def test_extract_points_normalised_and_pixel():
-    entry = {"detailedResults": [
-        {"points": [{"x": 0.1, "y": 0.2}, {"x": 0.3, "y": 0.4}],
-         "userDetails": {"userScores": {"global": 0.9}}},
-        {"points": [{"x": 0.5, "y": 0.6}], "userDetails": {"userScores": {"global": 0.7}}},
-    ]}
-    pts = extract_points(entry)
-    assert pts == [(0.1, 0.2), (0.3, 0.4), (0.5, 0.6)]
-    # weights only returned when there is one score per point; here 2 scores vs 3 points -> None
-    assert extract_weights(entry, len(pts)) is None
+def _response(locations, score):
+    return {"locations": [{"x": x, "y": y} for x, y in locations],
+            "userDetails": {"country": "XX", "userScores": {"global": score}}}
 
-    pixel_entry = {"responses": [{"x": 100, "y": 50}]}
-    assert extract_points(pixel_entry, size=(100, 200)) == [(0.5, 0.5)]
-    assert extract_points(pixel_entry) == []  # pixels but no size -> dropped
+
+REAL_ENTRY = {
+    "identifier": "dp_redacted",
+    "originalFileName": "s0003.png",
+    "privateMetadata": {"id": "s0003"},
+    "notApplicable": 0,
+    # the union of all responses' locations, repeated: must not be counted again
+    "aggregatedResults": [{"x": 25.0, "y": 50.0}, {"x": 80.0, "y": 10.0}, {"x": 81.0, "y": 11.0}],
+    "detailedResults": [
+        _response([(25.0, 50.0)], 0.9),
+        _response([(80.0, 10.0), (81.0, 11.0)], 0.5),  # one labeller, two taps
+    ],
+}
+
+
+def test_extract_taps_reads_percent_and_ignores_aggregated():
+    pts, weights = extract_taps(REAL_ENTRY)
+    assert pts == [(0.25, 0.5), (0.8, 0.1), (0.81, 0.11)]  # percent -> 0-1, no duplicates
+    assert weights == [0.9, 0.5, 0.5]  # each tap carries its labeller's reliability
+    with pytest.raises(ValueError):
+        extract_taps({"aggregatedResults": REAL_ENTRY["aggregatedResults"]})
 
 
 def test_match_by_filename_then_fallback_to_order():

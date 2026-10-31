@@ -131,20 +131,51 @@ def estimate(limit: int = typer.Option(None, help="submit only the first N sampl
 @app.command()
 def run(yes: bool = typer.Option(False, "--yes", help="actually launch the paid job"),
         limit: int = typer.Option(None, help="submit only the first N samples")) -> None:
-    """Launch the live Locate job (prints the estimate first; requires --yes)."""
+    """Launch the live Locate job (prints the estimate first; requires --yes).
+
+    Returns once the job is assigned; collect the results later with `hvma collect-results`.
+    """
     _require_creds()
-    from .rapidata_job import RefusedError, run_job
-    from .rapidata_job import estimate as _estimate
+    from .rapidata_job import RefusedError, job_record_path, run_job
 
     samples = _live_samples(limit)
-    est = _estimate(cfg(), samples)
-    typer.echo(f"estimate: {json.dumps(est)}")
-    if not yes:
-        typer.secho("dry run — pass --yes to launch", fg="yellow"); raise typer.Exit(0)
     try:
-        out = run_job(cfg(), samples, confirm=True)
+        job_id = run_job(cfg(), samples, confirm=yes,
+                         on_estimate=lambda est: typer.echo(f"estimate: {json.dumps(est)}"))
     except RefusedError as e:
-        typer.secho(f"refused: {e}", fg="red"); raise typer.Exit(1)
+        typer.secho(f"refused: {e}", fg="yellow" if not yes else "red")
+        raise typer.Exit(0 if not yes else 1) from None
+    typer.echo(f"launched {job_id} → recorded in {job_record_path(cfg())}")
+    typer.echo("check it with `hvma job-status`; fetch results with `hvma collect-results`")
+
+
+@app.command("job-status")
+def job_status(job_id: str = typer.Option(None, help="default: the job in results/live_job.json")) -> None:
+    """Status and completion of the live job (non-blocking)."""
+    _require_creds()
+    from .rapidata_job import job_status as _status
+
+    typer.echo(json.dumps(_status(cfg(), job_id), indent=2))
+
+
+@app.command("collect-results")
+def collect_results(
+    job_id: str = typer.Option(None, help="default: the job in results/live_job.json"),
+    wait: bool = typer.Option(False, "--wait", help="block until the job completes"),
+) -> None:
+    """Save the live job's final results to results/raw_locate.json. Never launches a job."""
+    _require_creds()
+    from .rapidata_job import HELD_STATUSES, JobNotReadyError
+    from .rapidata_job import collect_results as _collect
+
+    try:
+        out = _collect(cfg(), job_id, wait=wait)
+    except JobNotReadyError as e:
+        held = e.status in HELD_STATUSES
+        typer.secho(f"not ready: {e}" + (" — waiting on Rapidata (review, funds or pause)"
+                                         if held else " — try again later or pass --wait"),
+                    fg="yellow")
+        raise typer.Exit(3) from None
     typer.echo(f"raw results → {out}")
 
 
@@ -165,7 +196,7 @@ def parse_results(raw: Path = typer.Argument(..., exists=True),
     typer.echo(f"parsed {len(counts)} samples; points per sample: "
                f"min={min(counts.values()) if counts else 0} max={max(counts.values()) if counts else 0}")
     if counts and max(counts.values()) == 0:
-        typer.secho("no points found — run with --dump-schema and fix extract_points()", fg="red")
+        typer.secho("no points found — run with --dump-schema and fix extract_taps()", fg="red")
 
 
 # --------------------------------------------------------------------------- evaluation
@@ -173,21 +204,33 @@ def parse_results(raw: Path = typer.Argument(..., exists=True),
 
 @app.command()
 def evaluate(human: str = typer.Option("dataset", help="'dataset' or 'live'")) -> None:
-    """Metrics for every (sample, method) → metrics_<human>.csv, summary.csv, ablation.csv."""
-    from .report import _write_csv, ablation_summary, main_methods, summarize
+    """Metrics for every (sample, method) → metrics_<human>.csv, summary.csv, ablation.csv.
+
+    Non-dataset sources write summary_<human>.csv / ablation_<human>.csv and also score the
+    dataset crowd as a reference.
+    """
+    from .report import (
+        REFERENCES,
+        _write_csv,
+        ablation_summary,
+        main_methods,
+        source_suffix,
+        summarize,
+    )
     from .report import evaluate as _evaluate
 
     c = cfg()
     rows = _evaluate(c, human)
-    summary = summarize(rows, main_methods(c))
-    _write_csv(c.paths.results_dir / "summary.csv", summary)
-    typer.echo("main methods                         (results/summary.csv)")
+    sfx = source_suffix(human)
+    summary = summarize(rows, main_methods(c) + list(REFERENCES))
+    _write_csv(c.paths.results_dir / f"summary{sfx}.csv", summary)
+    typer.echo(f"main methods                         (results/summary{sfx}.csv)")
     for agg in summary:
         _echo_row(agg)
     if c.ablation.enabled:
         abl = ablation_summary(c, rows, human)
-        _write_csv(c.paths.results_dir / "ablation.csv", abl)
-        typer.echo("\nedge-bias ablation                   (results/ablation.csv)")
+        _write_csv(c.paths.results_dir / f"ablation{sfx}.csv", abl)
+        typer.echo(f"\nedge-bias ablation                   (results/ablation{sfx}.csv)")
         for agg in abl:
             _echo_row(agg)
 
@@ -229,7 +272,7 @@ def report(human: str = typer.Option("dataset", help="'dataset' or 'live'"),
             typer.echo(f"gallery    → {disagreement_gallery(c, rows, human, m)}")
     typer.echo(f"histograms → {metric_histograms(c, rows)}")
     if c.ablation.enabled:
-        typer.echo(f"ablation   → {ablation_chart(c, ablation_summary(c, rows, human))}")
+        typer.echo(f"ablation   → {ablation_chart(c, ablation_summary(c, rows, human), human)}")
         typer.echo(f"             {ablation_gallery(c, rows, human)}")
     typer.echo(f"viewer     → {write_agreement_json(c, rows, human)}")
 

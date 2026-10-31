@@ -3,25 +3,27 @@
 Grounded in the public docs (https://docs.rapidata.ai/examples/locate_job/ and
 /cost_estimates/). Two things were NOT documented and are handled defensively:
 
-1. The per-response structure of Locate results. `extract_points` walks the JSON and collects
-   any dict that has numeric `x` and `y` keys, treating values <= 1 as normalised and larger
-   values as pixels. Run `hvma parse-results --dump-schema` after the first live job and
-   tighten this once the real shape is known.
+1. The per-response structure of Locate results. Resolved by the first live job: see
+   `extract_taps` (taps are in percent of image size; `aggregatedResults` duplicates them).
 2. How result entries map back to input datapoints. Each datapoint is submitted with
    `private_metadata={"id": <sample id>}`, which the SDK (3.27) returns on every result entry, so
    `match_results_to_manifest` finds the id among the entry's strings; it also tries `assetUrls`
    filenames and finally falls back to index order.
 
-Guardrails (CLAUDE.md hard rules 1–2): `run_job` refuses without `confirm=True`, refuses above
-`max_datapoints`, and refuses when the SDK's estimate exceeds `max_cost`.
+Guardrails (CLAUDE.md hard rules 0–2): `run_job` reports the estimate first, refuses above
+`max_cost` or `max_datapoints`, and only launches with `confirm=True`.
+
+A launched job is recorded in results/live_job.json the moment it is assigned, because it may
+not finish in one sitting: Rapidata can hold a job for manual review (e.g. `ContentFlagged`)
+for hours. `collect_results` picks it up again by id; it never creates or pays for a new job.
 """
 
 from __future__ import annotations
 
-import contextlib
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,18 @@ from .heatmaps import Point, points_to_heatmap
 
 class RefusedError(RuntimeError):
     """Raised when a guardrail blocks a paid action."""
+
+
+class JobNotReadyError(RuntimeError):
+    """The job exists but has no final results yet (running, or held by Rapidata)."""
+
+    def __init__(self, status: str, detail: str = ""):
+        self.status = status
+        super().__init__(f"job status {status}" + (f": {detail}" if detail else ""))
+
+
+# States that never finish on their own (SDK 3.27): someone has to approve, top up or resume.
+HELD_STATUSES = ("ManualApproval", "SpendLimited", "Paused", "Blocked")
 
 
 # --------------------------------------------------------------------------- building & running
@@ -69,11 +83,8 @@ def build_job_definition(client: Any, cfg: Config, samples: list[Sample]) -> Any
     )
 
 
-def estimate(cfg: Config, samples: list[Sample]) -> dict[str, Any]:
-    """Cost estimate without launching anything. Blocks briefly while Rapidata prices it."""
-    client = _client()
-    jd = build_job_definition(client, cfg, samples)
-    est = jd.estimated_cost
+def _estimate_dict(jd: Any) -> dict[str, Any]:
+    est = jd.estimated_cost  # blocks briefly while Rapidata prices the definition
     return {
         "estimated_cost": float(est.estimated_cost),
         "datapoint_count": int(est.datapoint_count),
@@ -81,33 +92,103 @@ def estimate(cfg: Config, samples: list[Sample]) -> dict[str, Any]:
     }
 
 
-def run_job(cfg: Config, samples: list[Sample], confirm: bool = False) -> Path:
-    """Launch the Locate job, wait for completion, save raw results JSON. Returns the path."""
-    if not confirm:
-        raise RefusedError("run_job requires confirm=True (CLI: --yes)")
+def estimate(cfg: Config, samples: list[Sample]) -> dict[str, Any]:
+    """Cost estimate without launching anything. Creates a job definition; charges nothing."""
+    return _estimate_dict(build_job_definition(_client(), cfg, samples))
+
+
+def job_record_path(cfg: Config) -> Path:
+    return cfg.paths.results_dir / "live_job.json"
+
+
+def load_job_record(cfg: Config) -> dict[str, Any]:
+    p = job_record_path(cfg)
+    if not p.exists():
+        raise FileNotFoundError(f"{p} not found — no live job has been launched from here")
+    with p.open() as fh:
+        return json.load(fh)
+
+
+def _save_job_record(cfg: Config, record: dict[str, Any]) -> None:
+    p = job_record_path(cfg)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("w") as fh:
+        json.dump(record, fh, indent=2)
+
+
+def run_job(
+    cfg: Config,
+    samples: list[Sample],
+    confirm: bool = False,
+    on_estimate: Callable[[dict[str, Any]], None] | None = None,
+) -> str:
+    """Price the job, then (only with `confirm=True`) launch it and record it. Returns the job id.
+
+    One job definition serves both the estimate and the launch. Does not wait for results:
+    call `collect_results` (CLI: `hvma collect-results`) afterwards.
+    """
     client = _client()
     jd = build_job_definition(client, cfg, samples)
-    est = jd.estimated_cost
-    cost = float(est.estimated_cost)
-    if cost > cfg.rapidata.max_cost:
-        raise RefusedError(
-            f"estimated cost {cost:.2f} exceeds rapidata.max_cost={cfg.rapidata.max_cost}"
-        )
+    est = _estimate_dict(jd)
+    if on_estimate is not None:
+        on_estimate(est)
+    if est["estimated_cost"] > cfg.rapidata.max_cost:
+        raise RefusedError(f"estimated cost {est['estimated_cost']:.2f} exceeds "
+                           f"rapidata.max_cost={cfg.rapidata.max_cost}")
+    if not confirm:
+        raise RefusedError("dry run: launching needs confirm=True (CLI: --yes)")
     audience = client.audience.get_audience_by_id(cfg.rapidata.audience_id)
     job = audience.assign_job(jd)
-    with contextlib.suppress(Exception):  # the progress bar is cosmetic (needs a TTY)
-        job.display_progress_bar()
-    results = job.get_results()
-    raw = _to_jsonable(results)
+    # Record the job before anything can fail: losing the id would mean paying for a new job.
+    refs = datapoint_refs(samples)
+    _save_job_record(cfg, {
+        "job_id": job.id,
+        "assigned_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "estimate": est,
+        "samples": {s.id: ref for s, ref in zip(samples, refs)},
+    })
+    for s, ref in zip(samples, refs):
+        s.live_datapoint_ref = ref
+    save_manifest(cfg, load_manifest_merged(cfg, samples))
+    return job.id
+
+
+def load_manifest_merged(cfg: Config, updated: list[Sample]) -> list[Sample]:
+    """The full manifest with `updated` samples swapped in (run_job only sees a slice)."""
+    from .data import load_manifest
+
+    by_id = {s.id: s for s in updated}
+    return [by_id.get(s.id, s) for s in load_manifest(cfg)]
+
+
+def job_status(cfg: Config, job_id: str | None = None) -> dict[str, Any]:
+    """Non-blocking status snapshot of the recorded (or given) job."""
+    job_id = job_id or load_job_record(cfg)["job_id"]
+    progress = _client().job.get_job_by_id(job_id).get_progress()
+    return {"job_id": job_id, "status": str(progress.state),
+            "completion_percentage": float(progress.completion_percentage)}
+
+
+def collect_results(cfg: Config, job_id: str | None = None, wait: bool = False) -> Path:
+    """Save the final results of the recorded (or given) job to results/raw_locate.json.
+
+    With `wait=False` (default) raises JobNotReadyError unless the job has completed; with
+    `wait=True` blocks until it completes, but still raises for held states that never finish
+    on their own (manual review, out of funds, paused, blocked).
+    """
+    job_id = job_id or load_job_record(cfg)["job_id"]
+    job = _client().job.get_job_by_id(job_id)
+    status = str(job.get_status())
+    if status in HELD_STATUSES or (not wait and status != "Completed"):
+        raise JobNotReadyError(status)
+    try:
+        results = job.get_results()
+    except Exception as e:  # the SDK raises a plain Exception for held states
+        raise JobNotReadyError(str(job.get_status()), str(e).splitlines()[0]) from e
     out = cfg.paths.results_dir / cfg.rapidata.raw_results_file
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w") as fh:
-        json.dump(raw, fh, indent=2)
-    # Remember which ref each sample was submitted under so parsing can join on it.
-    refs = datapoint_refs(samples)
-    for s, ref in zip(samples, refs):
-        s.live_datapoint_ref = ref
-    save_manifest(cfg, samples)
+        json.dump(_to_jsonable(results), fh, indent=2)
     return out
 
 
@@ -140,46 +221,29 @@ def _walk(obj: Any) -> Iterator[Any]:
             yield from _walk(v)
 
 
-def _is_point(d: Any) -> bool:
-    return (
-        isinstance(d, dict)
-        and isinstance(d.get("x"), (int, float))
-        and isinstance(d.get("y"), (int, float))
-    )
+def extract_taps(entry: dict[str, Any]) -> tuple[list[Point], list[float]]:
+    """Taps and per-tap weights from one Locate result entry, in normalised coordinates.
 
+    Schema of the first live job (Locate results v4.1.0, SDK 3.27): `detailedResults` has one
+    item per response, each with `locations: [{"x", "y"}]` in **percent** of the image's width
+    and height (0-100) and `userDetails.userScores.global`, the labeller's reliability (0-1),
+    used as the weight of each of their taps. `aggregatedResults` repeats the union of those
+    locations and is ignored; counting both would double every tap.
 
-def extract_points(entry: Any, size: tuple[int, int] | None = None) -> list[Point]:
-    """All (x, y) points anywhere inside one result entry, as normalised coordinates.
-
-    If any coordinate exceeds 1 we assume pixels and divide by `size=(H, W)`; without `size`
-    such points are dropped with a warning in the caller.
+    The percent reading was checked against the dataset's independent crowd heatmaps for the
+    same 12 images: mean cc 0.60 read as percent, -0.07 read as pixels.
     """
+    responses = entry.get("detailedResults")
+    if responses is None:
+        raise ValueError("result entry has no 'detailedResults'; run --dump-schema")
     pts: list[Point] = []
-    for node in _walk(entry):
-        if _is_point(node):
-            pts.append((float(node["x"]), float(node["y"])))
-    if not pts:
-        return pts
-    if max(max(x, y) for x, y in pts) > 1.0:
-        if size is None:
-            return []
-        h, w = size
-        pts = [(x / w, y / h) for x, y in pts]
-    return pts
-
-
-def extract_weights(entry: Any, n: int) -> list[float] | None:
-    """Per-point reliability weights from `userDetails.userScores.global`, if present.
-
-    Only returned when we find exactly one score per point; otherwise None (uniform weights).
-    """
-    scores: list[float] = []
-    for node in _walk(entry):
-        if isinstance(node, dict) and "userScores" in node:
-            g = node["userScores"].get("global") if isinstance(node["userScores"], dict) else None
-            if isinstance(g, (int, float)):
-                scores.append(float(g))
-    return scores if len(scores) == n else None
+    weights: list[float] = []
+    for r in responses:
+        score = (r.get("userDetails") or {}).get("userScores", {}).get("global", 1.0)
+        for loc in r.get("locations") or []:
+            pts.append((float(loc["x"]) / 100.0, float(loc["y"]) / 100.0))
+            weights.append(float(score))
+    return pts, weights
 
 
 def result_entries(raw: dict[str, Any]) -> list[Any]:
@@ -240,8 +304,7 @@ def parse_results(
         e = mapping.get(s.id)
         if e is None:
             continue
-        pts = extract_points(e, size=(s.height, s.width))
-        weights = extract_weights(e, len(pts))
+        pts, weights = extract_taps(e)
         counts[s.id] = len(pts)
         with (out_dir / f"{s.id}.points.json").open("w") as fh:
             json.dump(pts, fh)

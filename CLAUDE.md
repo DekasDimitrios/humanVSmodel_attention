@@ -8,10 +8,10 @@ A weekend-scale experiment: **do humans and a vision model look at the same plac
 - **Human side:** click/tap heatmaps from Rapidata's crowd. Two sources:
   1. *Offline (free):* the `coherence_heatmap` column of the Hugging Face dataset
      `Rapidata/text-2-image-Rich-Human-Feedback`. Use this to develop and validate everything.
-  2. *Live (costs money) — out of scope.* A Rapidata **Locate** job via the `rapidata` SDK. The
-     owner decided on 2026-10-31 to keep the project completely cost-free, so the live path is
-     never run. Its code (`rapidata_job.py`, `estimate`/`run`/`parse-results`) stays, guarded,
-     for anyone who wants to fund a run later.
+  2. *Live (small, paid from free credit):* a Rapidata **Locate** job via the `rapidata` SDK on
+     12 images that also have dataset heatmaps, so live and dataset taps can be compared. Budget
+     rule (owner, 2026-10-31): no out-of-pocket cost; the account's free prepaid credit may be
+     used.
 - **Model side:** saliency maps from a CLIP vision tower — Grad-CAM on the last transformer block
   and attention rollout — targeted at an "artifact / glitch" text prompt, read against a
   model-free `center` baseline (human taps are strongly centre-biased). An edge-bias ablation
@@ -60,6 +60,8 @@ hvma evaluate --human dataset       # metrics vs. the dataset heatmaps (free pat
 hvma estimate                       # free cost estimate for the live Locate job; NEVER runs it
                                     # (auth: `python -m rapidata login` or .env)
 hvma run --yes                      # launch the live Locate job (asks for --yes; prints estimate first)
+hvma job-status                     # status of the recorded live job (results/live_job.json)
+hvma collect-results --wait         # fetch its results; never launches or pays for a new job
 hvma parse-results results/raw_locate.json   # raw SDK JSON -> point sets -> human heatmaps
 hvma evaluate --human live          # metrics vs. live crowd heatmaps
 hvma report                         # overlays + CSV + figures + results/agreement.json
@@ -68,8 +70,8 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 
 ## Hard rules
 
-0. **The project is cost-free. Do not run `hvma run`, with or without `--yes`,** and don't
-   suggest it as a next step. Only the owner can lift this.
+0. **No out-of-pocket cost.** Paid jobs may only draw on the account's free prepaid credit, and
+   `hvma run` needs the owner's explicit "go" in the conversation, every time, on top of `--yes`.
 1. **Never launch a paid Rapidata job without the `--yes` flag and printing `estimated_cost` first.**
    `hvma run` must refuse if the estimate exceeds `rapidata.max_cost` in the config.
 2. **Cap live-job size.** `rapidata.max_datapoints` in config (default 40) is a hard ceiling.
@@ -97,11 +99,12 @@ hvma serve                          # viewer at http://127.0.0.1:8000
       **Resolved and confirmed against the live API (2026-10-31):** `hvma estimate --limit 1`
       uploaded a local PNG, created a Locate job definition and priced it (0.048 for 1 image x
       12 responses). Estimating is free; nothing is assigned to labellers.
-- [ ] *Moot while the project is cost-free (only a live job would answer it).* Field names in
-      Locate results (points per response, normalised vs. pixel coordinates).
-      SDK 3.27 confirms the envelope (`{"results": [{..., "detailedResults": [...],
-      "privateMetadata": {...}}]}`) but not the per-point shape, which comes from the server.
-      `extract_points` handles both coordinate conventions; check with `--dump-schema`.
+- [x] Field names in Locate results. **Resolved by the first live job (Locate results v4.1.0):**
+      `detailedResults[].locations[]` holds each response's taps as `{x, y}` in **percent** of
+      image width/height (0-100), next to `userDetails.userScores.global`;
+      `aggregatedResults` repeats the union of those taps and must not be counted again.
+      Checked against the dataset crowd: cc 0.60 read as percent, -0.07 as pixels. See
+      `rapidata_job.extract_taps` and `tests/test_rapidata_parsing.py`.
 - [x] How result entries are keyed back to the input datapoints. **Resolved:** each datapoint
       is submitted with `private_metadata={"id": <sample id>}`, returned on every result entry.
 
@@ -118,8 +121,9 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 ## Definition of done
 
 - `hvma evaluate --human dataset` runs on ≥30 images and `results/summary.csv` exists.
-- Everything reproduces for free from the public dataset; the paid live Locate job is out of
-  scope (2026-10-31).
+- The offline study reproduces for free from the public dataset.
+- A small live Locate job (12 images, 12 responses each) ran on free credit and was evaluated
+  with `--human live`.
 - `results/figures/disagreement_gallery_gradcam_l10.png` shows the 6 images where humans and the
   model disagree most, with a one-line interpretation each in the README. (`gradcam_l10`, not
   last-layer `gradcam`, whose top-6 are all edge bias; that gallery is kept for contrast.)

@@ -20,6 +20,7 @@ from .heatmaps import center_prior, normalize, resize, texture_energy, to_grid, 
 from .metrics import BORDER_FRAC, border_mass, compute_all, disagreement_score, texture_affinity
 
 BASELINES = ("center",)  # model-free maps, computed on the fly rather than loaded from disk
+REFERENCES = ("dataset_crowd",)  # the dataset's human heatmap, scored against a live crowd
 TEXTURE_GRID = 14  # one cell per CLIP ViT-B/16 patch
 
 # Reference palette (dataviz skill, categorical slots 1-3) and chart ink.
@@ -40,7 +41,21 @@ def all_methods(cfg: Config) -> list[str]:
 
 
 def group_of(cfg: Config, method: str) -> str:
+    if method in REFERENCES:
+        return "reference"
     return "main" if method in cfg.model.methods else "ablation"
+
+
+def source_suffix(human_source: str) -> str:
+    """Output-name suffix: dataset results keep the plain names, others get `_<source>`."""
+    return "" if human_source == "dataset" else f"_{human_source}"
+
+
+def methods_for(cfg: Config, human_source: str) -> list[str]:
+    """Methods evaluated against `human_source`: all model maps, plus, for crowd sources other
+    than the dataset, the dataset crowd itself as a reference (how well one crowd predicts
+    another: a practical ceiling for any model)."""
+    return all_methods(cfg) + ([] if human_source == "dataset" else list(REFERENCES))
 
 
 # --------------------------------------------------------------------------- saliency I/O
@@ -59,6 +74,9 @@ def model_map(cfg: Config, sample: Sample, method: str, shape: tuple[int, int]) 
     """The `method` map for `sample` at `shape`, in [0, 1]; None if it was never computed."""
     if method == "center":
         return center_prior(shape, cfg.model.center_sigma_frac)
+    if method == "dataset_crowd":
+        hm = load_human_heatmap(cfg, sample, "dataset")
+        return None if hm is None else normalize(resize(hm, shape))
     sal = load_saliency(cfg, sample, method)
     return None if sal is None else normalize(resize(sal, shape))
 
@@ -81,7 +99,7 @@ def evaluate(cfg: Config, human_source: str) -> list[dict]:
         human_grid = to_grid(human, g)
         human_tex = {"human_texture_rho": texture_affinity(human_grid, texture),
                      "human_texture_rho_ctr": texture_affinity(human_grid, texture, control)}
-        for method in all_methods(cfg):
+        for method in methods_for(cfg, human_source):
             model = model_map(cfg, s, method, human.shape)
             if model is None:
                 continue
@@ -203,7 +221,7 @@ def write_overlays(cfg: Config, human_source: str) -> None:
         human = load_human_heatmap(cfg, s, human_source)
         if human is not None:
             overlay(img, human).save(out_dir / f"{s.id}.human_{human_source}.jpg", quality=85)
-        for method in all_methods(cfg):
+        for method in methods_for(cfg, human_source):
             hm = model_map(cfg, s, method, (img.height, img.width))
             if hm is not None:
                 overlay(img, hm).save(out_dir / f"{s.id}.{method}.jpg", quality=85)
@@ -245,7 +263,7 @@ def disagreement_gallery(cfg: Config, rows: list[dict], human_source: str,
             ax.axis("off")
     fig.tight_layout()
     cfg.paths.figures_dir.mkdir(parents=True, exist_ok=True)
-    suffix = "" if method == "gradcam" else f"_{method}"
+    suffix = ("" if method == "gradcam" else f"_{method}") + source_suffix(human_source)
     out = cfg.paths.figures_dir / f"disagreement_gallery{suffix}.png"
     fig.savefig(out, dpi=120)
     plt.close(fig)
@@ -269,13 +287,13 @@ def metric_histograms(cfg: Config, rows: list[dict]) -> Path:
         ax.legend(fontsize=7)
     fig.tight_layout()
     cfg.paths.figures_dir.mkdir(parents=True, exist_ok=True)
-    out = cfg.paths.figures_dir / "metric_histograms.png"
+    out = cfg.paths.figures_dir / f"metric_histograms{source_suffix(rows[0]['human_source'])}.png"
     fig.savefig(out, dpi=120)
     plt.close(fig)
     return out
 
 
-def ablation_chart(cfg: Config, summary: list[dict]) -> Path:
+def ablation_chart(cfg: Config, summary: list[dict], human_source: str = "dataset") -> Path:
     """Two panels sharing the method axis: border mass (the edge bias) and cc with humans.
 
     Separate panels rather than two y-scales; reference values are drawn as labelled lines.
@@ -321,7 +339,7 @@ def ablation_chart(cfg: Config, summary: list[dict]) -> Path:
     fig.patch.set_facecolor("#fcfcfb")
     fig.tight_layout(rect=(0, 0.06, 1, 1))
     cfg.paths.figures_dir.mkdir(parents=True, exist_ok=True)
-    out = cfg.paths.figures_dir / "ablation_edge_bias.png"
+    out = cfg.paths.figures_dir / f"ablation_edge_bias{source_suffix(human_source)}.png"
     fig.savefig(out, dpi=140, facecolor=fig.get_facecolor())
     plt.close(fig)
     return out
@@ -352,7 +370,7 @@ def ablation_gallery(cfg: Config, rows: list[dict], human_source: str, k: int = 
                 ax.set_title(title, fontsize=7, color=INK)
     fig.tight_layout(pad=0.3)
     cfg.paths.figures_dir.mkdir(parents=True, exist_ok=True)
-    out = cfg.paths.figures_dir / "ablation_gallery.png"
+    out = cfg.paths.figures_dir / f"ablation_gallery{source_suffix(human_source)}.png"
     fig.savefig(out, dpi=130)
     plt.close(fig)
     return out
@@ -389,10 +407,12 @@ def write_agreement_json(cfg: Config, rows: list[dict], human_source: str) -> Pa
     payload = {
         "human_source": human_source,
         "methods": {"main": [m for m in main_methods(cfg)],
-                    "ablation": [m for m in ablation_methods(cfg) if m not in cfg.model.methods]},
+                    "ablation": [m for m in ablation_methods(cfg) if m not in cfg.model.methods],
+                    "reference": [m for m in methods_for(cfg, human_source)
+                                  if m in REFERENCES]},
         "samples": sorted(by_id.values(), key=sort_key),
     }
-    out = cfg.paths.results_dir / "agreement.json"
+    out = cfg.paths.results_dir / f"agreement{source_suffix(human_source)}.json"
     with out.open("w") as fh:
         json.dump(payload, fh, indent=1)
     return out

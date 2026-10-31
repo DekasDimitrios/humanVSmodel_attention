@@ -25,10 +25,14 @@ def index() -> FileResponse:
 
 
 @app.get("/api/agreement")
-def agreement() -> JSONResponse:
-    p = RESULTS / "agreement.json"
+def agreement(source: str = "dataset") -> JSONResponse:
+    """Viewer payload for one human source: `?source=live` reads agreement_live.json."""
+    if source not in ("dataset", "live"):
+        raise HTTPException(400, "source must be 'dataset' or 'live'")
+    name = "agreement.json" if source == "dataset" else f"agreement_{source}.json"
+    p = RESULTS / name
     if not p.exists():
-        raise HTTPException(404, "results/agreement.json missing — run `hvma report` first")
+        raise HTTPException(404, f"results/{name} missing — run `hvma report --human {source}` first")
     return JSONResponse(content=__import__("json").loads(p.read_text()))
 
 

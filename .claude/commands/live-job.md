@@ -1,11 +1,12 @@
-**Disabled: the project is cost-free (owner's decision, 2026-10-31). Do not run any step of
-this command; reply that the live job is out of scope unless the owner lifts that decision.**
+Budget rule (owner, 2026-10-31): no out-of-pocket cost. The job may only draw on the account's
+free prepaid credit, and step 3 still needs the owner to type "go".
 
 Prepare and (only with my explicit go-ahead) run the small live Rapidata Locate job.
 
 Preconditions — stop and tell me if any fails:
 - `/free-path` has been completed and `results/metrics_dataset.csv` exists.
-- `.env` has `RAPIDATA_CLIENT_ID` and `RAPIDATA_CLIENT_SECRET` (do not print them).
+- Rapidata auth works: `python -m rapidata status` exits 0, or `.env` has
+  `RAPIDATA_CLIENT_ID` and `RAPIDATA_CLIENT_SECRET` (do not print them).
 - `/verify-sdk` has been run in this repo.
 
 Steps:
@@ -13,7 +14,9 @@ Steps:
    If it fails on local paths, stop and tell me; we will host the images and set
    `live_datapoint_ref` in the manifest instead.
 2. `hvma estimate --limit 12` — show me the printed estimate.
-3. **Wait for me to type "go".** Then `hvma run --yes --limit 12`.
+3. **Wait for me to type "go".** Then `hvma run --yes --limit 12`. It returns once the job is
+   assigned and records it in `results/live_job.json`. Rapidata may hold it for manual review;
+   `hvma job-status` shows progress and `hvma collect-results --wait` saves the results.
 4. `hvma parse-results results/raw_locate.json --dump-schema` — paste the type tree here.
 5. `hvma parse-results results/raw_locate.json`. If points-per-sample is 0, fix `extract_points`
    for the real schema, add a test with a redacted real entry, and re-run.
