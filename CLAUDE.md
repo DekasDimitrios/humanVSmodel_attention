@@ -8,8 +8,10 @@ A weekend-scale experiment: **do humans and a vision model look at the same plac
 - **Human side:** click/tap heatmaps from Rapidata's crowd. Two sources:
   1. *Offline (free):* the `coherence_heatmap` column of the Hugging Face dataset
      `Rapidata/text-2-image-Rich-Human-Feedback`. Use this to develop and validate everything.
-  2. *Live (costs money):* a Rapidata **Locate** job via the `rapidata` Python SDK on a small set
-     of fresh images. This is the "did something cool with the product" part of the job application.
+  2. *Live (costs money) — out of scope.* A Rapidata **Locate** job via the `rapidata` SDK. The
+     owner decided on 2026-10-31 to keep the project completely cost-free, so the live path is
+     never run. Its code (`rapidata_job.py`, `estimate`/`run`/`parse-results`) stays, guarded,
+     for anyone who wants to fund a run later.
 - **Model side:** saliency maps from a CLIP vision tower — Grad-CAM on the last transformer block
   and attention rollout — targeted at an "artifact / glitch" text prompt, read against a
   model-free `center` baseline (human taps are strongly centre-biased). An edge-bias ablation
@@ -63,6 +65,8 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 
 ## Hard rules
 
+0. **The project is cost-free. Do not run `hvma run`, with or without `--yes`,** and don't
+   suggest it as a next step. Only the owner can lift this.
 1. **Never launch a paid Rapidata job without the `--yes` flag and printing `estimated_cost` first.**
    `hvma run` must refuse if the estimate exceeds `rapidata.max_cost` in the config.
 2. **Cap live-job size.** `rapidata.max_datapoints` in config (default 40) is a hard ceiling.
@@ -109,8 +113,7 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 ## Definition of done (for the application)
 
 - `hvma evaluate --human dataset` runs on ≥30 images and `results/summary.csv` exists.
-- At least one small live Locate job ran (≥10 images, ~10–15 responses each) and its results were
-  evaluated with `--human live`.
+- ~~At least one small live Locate job ran~~ — dropped: the project is cost-free (2026-10-31).
 - `results/figures/disagreement_gallery.png` shows the 6 images where humans and the model disagree
   most, with a one-line interpretation each in the README.
 - README has: 1 paragraph on the idea, 1 figure, 3 bullet findings, how to reproduce in 5 commands.

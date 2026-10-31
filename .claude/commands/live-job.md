@@ -1,3 +1,6 @@
+**Disabled: the project is cost-free (owner's decision, 2026-10-31). Do not run any step of
+this command; reply that the live job is out of scope unless the owner lifts that decision.**
+
 Prepare and (only with my explicit go-ahead) run the small live Rapidata Locate job.
 
 Preconditions — stop and tell me if any fails:

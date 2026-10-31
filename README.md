@@ -4,8 +4,8 @@ Comparing **where people tap when asked to find glitches in AI-generated images*
 [Rapidata](https://rapidata.ai)'s crowd) against **where a CLIP model's saliency lands** when asked
 the same question. The disagreements are the interesting part.
 
-> Status: skeleton. See `CLAUDE.md` for the plan, conventions and the open questions to resolve
-> first.
+> Status: the offline pipeline runs end to end on 40 images; findings are being written up.
+> Entirely cost-free: it uses only Rapidata's public dataset.
 
 ## Idea in one paragraph
 
@@ -16,13 +16,13 @@ model attention map. We score agreement per image (pointing game, IoU at the top
 correlation, NSS) and look at the tail: images where the crowd converges on a region the model
 ignores, and vice versa.
 
-## Two phases
+## Data
 
-1. **Offline (free).** Rapidata already published human artefact heatmaps in
-   [`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback)
-   (`coherence_heatmap` column). The whole pipeline is developed and validated against those.
-2. **Live (small, paid).** A Locate job on a handful of fresh images through the Python SDK, to
-   check the pipeline end-to-end on real crowd output and to use the product for real.
+Rapidata already published human artefact heatmaps in
+[`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback)
+(`coherence_heatmap` column): crowd taps collected with the same kind of Locate task. All results
+here use that dataset, so nothing costs money to reproduce. The repo can also run a fresh
+(paid) Locate job through the Rapidata SDK; that path is implemented but was not used.
 
 ## Setup
 
@@ -32,7 +32,6 @@ conda create -n hvma python=3.12 pip && conda activate hvma
 # newer CUDA builds dropped them. CPU-only also works (40 images take a few minutes).
 pip install torch --index-url https://download.pytorch.org/whl/cu126
 pip install -e ".[dev]"
-cp .env.example .env       # only needed for the live Rapidata job
 pytest -q
 ```
 
@@ -48,7 +47,8 @@ hvma evaluate --human dataset
 hvma report && hvma serve  # open http://127.0.0.1:8000
 ```
 
-Live job (needs `RAPIDATA_CLIENT_ID` / `RAPIDATA_CLIENT_SECRET` in `.env`):
+Optional live job — **costs money, not used for these results**. Needs a Rapidata account and
+`RAPIDATA_CLIENT_ID` / `RAPIDATA_CLIENT_SECRET` in `.env` (copy `.env.example`):
 
 ```bash
 hvma estimate              # prints the cost; charges nothing
