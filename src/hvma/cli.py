@@ -105,8 +105,8 @@ def _live_samples(limit: int | None):
 
 def _require_creds() -> None:
     if not have_rapidata_credentials():
-        typer.secho("RAPIDATA_CLIENT_ID / RAPIDATA_CLIENT_SECRET not set — copy .env.example to .env",
-                    fg="red")
+        typer.secho("Not authenticated with Rapidata: run `python -m rapidata login`, or set "
+                    "RAPIDATA_CLIENT_ID / RAPIDATA_CLIENT_SECRET in .env", fg="red")
         raise typer.Exit(2)
 
 

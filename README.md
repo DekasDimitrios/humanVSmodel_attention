@@ -22,7 +22,9 @@ Rapidata already published human artefact heatmaps in
 [`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback)
 (`coherence_heatmap` column): crowd taps collected with the same kind of Locate task. All results
 here use that dataset, so nothing costs money to reproduce. The repo can also run a fresh
-(paid) Locate job through the Rapidata SDK; that path is implemented but was not used.
+(paid) Locate job through the Rapidata SDK. That path is verified against the live API, where
+`hvma estimate` uploaded an image, created a job definition and priced it at 0.048 for one image
+with 12 responses, but the job itself was not run.
 
 ## Setup
 
@@ -47,8 +49,9 @@ hvma evaluate --human dataset
 hvma report && hvma serve  # open http://127.0.0.1:8000
 ```
 
-Optional live job — **costs money, not used for these results**. Needs a Rapidata account and
-`RAPIDATA_CLIENT_ID` / `RAPIDATA_CLIENT_SECRET` in `.env` (copy `.env.example`):
+Optional live job — **costs money, not used for these results**. Needs a Rapidata account:
+log in once with `python -m rapidata login`, or put `RAPIDATA_CLIENT_ID` /
+`RAPIDATA_CLIENT_SECRET` in `.env` (copy `.env.example`):
 
 ```bash
 hvma estimate              # prints the cost; charges nothing

@@ -57,7 +57,8 @@ hvma fetch --n 40                   # stream N samples from HF -> data/images + 
 hvma inspect-dataset                # print the raw shape/type of coherence_heatmap for one sample
 hvma saliency                       # compute model saliency for every image in the manifest
 hvma evaluate --human dataset       # metrics vs. the dataset heatmaps (free path)
-hvma estimate                       # cost estimate for the live Locate job; NEVER runs it
+hvma estimate                       # free cost estimate for the live Locate job; NEVER runs it
+                                    # (auth: `python -m rapidata login` or .env)
 hvma run --yes                      # launch the live Locate job (asks for --yes; prints estimate first)
 hvma parse-results results/raw_locate.json   # raw SDK JSON -> point sets -> human heatmaps
 hvma evaluate --human live          # metrics vs. live crowd heatmaps
@@ -93,8 +94,9 @@ hvma serve                          # viewer at http://127.0.0.1:8000
       ~30% of rows have none (`dataset.require_heatmap` skips them). Handled as-is by
       `data.dataset_heatmap_to_array`; see `tests/test_data.py`.
 - [x] Whether `create_locate_job_definition(datapoints=...)` accepts local file paths.
-      **Resolved (SDK 3.27 source + bundled guide `python -m rapidata skill`):** yes, local paths
-      are uploaded. Still confirm with ONE datapoint via `hvma estimate --limit 1` (no charge).
+      **Resolved and confirmed against the live API (2026-10-31):** `hvma estimate --limit 1`
+      uploaded a local PNG, created a Locate job definition and priced it (0.048 for 1 image x
+      12 responses). Estimating is free; nothing is assigned to labellers.
 - [ ] *Moot while the project is cost-free (only a live job would answer it).* Field names in
       Locate results (points per response, normalised vs. pixel coordinates).
       SDK 3.27 confirms the envelope (`{"results": [{..., "detailedResults": [...],

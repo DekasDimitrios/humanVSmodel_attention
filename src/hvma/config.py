@@ -6,6 +6,8 @@ Kept deliberately simple (no pydantic) so a reader can see every knob in one pla
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -147,4 +149,16 @@ def load_config(path: Path | str = DEFAULT_CONFIG) -> Config:
 
 
 def have_rapidata_credentials() -> bool:
-    return bool(os.getenv("RAPIDATA_CLIENT_ID") and os.getenv("RAPIDATA_CLIENT_SECRET"))
+    """Client ID/secret in the environment, or a saved `python -m rapidata login`.
+
+    Checked up front because `RapidataClient()` without credentials blocks for minutes on a
+    browser login. `rapidata status` never starts one; it exits 0 only when authenticated.
+    """
+    if os.getenv("RAPIDATA_CLIENT_ID") and os.getenv("RAPIDATA_CLIENT_SECRET"):
+        return True
+    try:
+        status = subprocess.run([sys.executable, "-m", "rapidata", "status"],
+                                capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return status.returncode == 0
