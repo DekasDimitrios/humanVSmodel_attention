@@ -4,8 +4,8 @@ Comparing **where people tap when asked to find glitches in AI-generated images*
 [Rapidata](https://rapidata.ai)'s crowd) against **where a CLIP model's saliency lands** when asked
 the same question. The disagreements are the interesting part.
 
-> Status: the offline pipeline runs end to end on 40 images; findings are being written up.
-> Entirely cost-free: it uses only Rapidata's public dataset.
+> Status: complete for the offline study (40 images). Entirely cost-free: it uses only
+> Rapidata's public dataset.
 
 ## Idea in one paragraph
 
@@ -59,7 +59,43 @@ hvma evaluate --human live
 
 ## Findings
 
-_TODO — three bullets and one figure, once the numbers are in._
+40 images from the dataset, compared against the crowd's `coherence_heatmap`
+(`results/summary.csv`, `results/ablation.csv`):
+
+- **People tap on the subject, near the centre.** A model-free centre gaussian already reaches
+  cc 0.50 and a pointing-game hit rate of 0.68. That is the bar any saliency method has to clear,
+  and on this data none does.
+- **Last-layer CLIP saliency is anti-correlated with people** (Grad-CAM cc −0.19, rollout −0.17;
+  pointing 0.03, where a random map scores 0.10). 65% of its mass sits in the outer border of
+  the image, versus 16% for the crowd. The bias belongs to the **last block**: one block earlier,
+  Grad-CAM moves onto the subject (cc +0.20, pointing 0.42). Masking high-norm "artefact"
+  tokens does not change it.
+- **Registers fix attention in DINOv2** (cc 0.06 → 0.38, pointing 0.03 → 0.62). That map isn't
+  prompt-conditioned, though: it finds the main object, not the glitch, and it still trails the
+  centre prior. On these images, no CLIP or DINOv2 map localises glitches the way people do.
+
+Caveats: 40 images; the dataset gives aggregated heatmaps rather than raw taps, so NSS (which
+needs tap points) is not reported; one prompt pair and one CLIP model (ViT-B/16).
+
+### Where humans and Grad-CAM disagree most
+
+![disagreement gallery](results/figures/disagreement_gallery.png)
+
+All six are the edge bias at work: people tap on the subject while Grad-CAM tiles the empty
+background. None is a case of the model finding a different glitch.
+
+1. `s0010` *banana character* — people tap the face and the stubby hands; Grad-CAM covers the
+   plain grey backdrop.
+2. `s0025` *anthropomorphic Thwomp woman* — the crowd converges on the torso's anatomy; Grad-CAM
+   outlines the white background around the figure.
+3. `s0037` *woman with flowing hair* — people go for the outstretched hand, a classic generation
+   failure; Grad-CAM marks the empty wall.
+4. `s0031` *helicopter with car wheels* — taps land where the car and helicopter fuse (front
+   wheel, rotor hub); Grad-CAM marks tarmac and sky.
+5. `s0024` *chakat* — people tap the oversized ears and the face; Grad-CAM spreads over the
+   painted foliage.
+6. `s0000` *wood-cut otter* — people tap the tail emerging from the whirlpool; Grad-CAM traces
+   the print's frame.
 
 ### Edge-bias ablation (dataset heatmaps, 40 images)
 
@@ -90,4 +126,6 @@ against it. Each ablation variant tests one explanation (`results/ablation.csv`)
 ## Notes
 
 - Built with Claude Code; `CLAUDE.md` holds the working agreement.
-- Not affiliated with Rapidata. Dataset © Rapidata, used under its Hugging Face licence.
+- Not affiliated with Rapidata. Dataset and the images in the gallery:
+  [`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback),
+  © Rapidata, Apache-2.0.

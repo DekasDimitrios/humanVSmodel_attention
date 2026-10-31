@@ -6,10 +6,11 @@ data/*
 !data/README.md
 results/*
 !results/README.md
-# figures embedded in the README (charts only; galleries contain dataset images)
+# figures embedded in the README (the gallery shows dataset images: Apache-2.0, credited in README)
 !results/figures/
 results/figures/*
 !results/figures/ablation_edge_bias.png
+!results/figures/disagreement_gallery.png
 
 # python
 __pycache__/
