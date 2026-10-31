@@ -13,6 +13,8 @@ Metric cheat-sheet (standard saliency-evaluation metrics, see Bylinskii et al. 2
 - js_divergence: symmetric divergence between the two maps as distributions. 0 = identical.
 - border_mass:   not an agreement metric — the share of the *model* map's mass in the outer
                  band of the image (see `border_mass`). Quantifies the edge bias.
+- texture_affinity: not an agreement metric either — rank correlation between a map and the
+                 image's texture energy, optionally with the centre prior partialled out.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from collections.abc import Iterable
 
 import numpy as np
 from scipy.spatial.distance import jensenshannon
-from scipy.stats import pearsonr, spearmanr
+from scipy.stats import pearsonr, rankdata, spearmanr
 
 from .heatmaps import Point, argmax_point, threshold_topk, to_distribution
 
@@ -104,6 +106,28 @@ def border_mass(hm: np.ndarray, frac: float = BORDER_FRAC) -> float:
     h, w = p.shape
     bh, bw = max(1, round(frac * h)), max(1, round(frac * w))
     return float(1.0 - p[bh:h - bh, bw:w - bw].sum())
+
+
+def texture_affinity(grid: np.ndarray, texture: np.ndarray,
+                     control: np.ndarray | None = None) -> float:
+    """Spearman correlation between a map and texture energy, both on the same (g, g) grid.
+
+    With `control` (e.g. the centre prior on that grid), the ranks of `control` are regressed
+    out of both first (partial Spearman). Textured regions tend to be the subject, which tends to
+    be central, so without the control this partly measures centre bias.
+    """
+    a, t = np.ravel(grid), np.ravel(texture)
+    if a.std() == 0 or t.std() == 0:
+        return float("nan")
+    if control is None:
+        return float(spearmanr(a, t)[0])
+    ra, rt, rc = (rankdata(v) for v in (a, t, np.ravel(control)))
+    design = np.c_[np.ones_like(rc), rc]
+
+    def residual(y: np.ndarray) -> np.ndarray:
+        return y - design @ np.linalg.lstsq(design, y, rcond=None)[0]
+
+    return float(np.corrcoef(residual(ra), residual(rt))[0, 1])
 
 
 def compute_all(

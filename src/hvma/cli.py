@@ -195,7 +195,8 @@ def _echo_row(agg: dict) -> None:
 
     typer.echo(f"  {agg['method']:18s} cc={f('cc', '6.3f')} iou@20={f('iou@20', '.3f')} "
                f"pointing={f('pointing_game', '.2f')} js={f('js_divergence', '.3f')} "
-               f"border={f('border_mass', '.2f')}")
+               f"border={f('border_mass', '.2f')} texture={f('texture_rho', '+.2f')} "
+               f"texture|ctr={f('texture_rho_ctr', '+.2f')}")
 
 
 @app.command()

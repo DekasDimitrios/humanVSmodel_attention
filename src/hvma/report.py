@@ -16,10 +16,11 @@ from PIL import Image
 
 from .config import Config
 from .data import Sample, load_human_heatmap, load_image, load_manifest, load_points
-from .heatmaps import center_prior, normalize, resize, to_uint8
-from .metrics import BORDER_FRAC, border_mass, compute_all, disagreement_score
+from .heatmaps import center_prior, normalize, resize, texture_energy, to_grid, to_uint8
+from .metrics import BORDER_FRAC, border_mass, compute_all, disagreement_score, texture_affinity
 
 BASELINES = ("center",)  # model-free maps, computed on the fly rather than loaded from disk
+TEXTURE_GRID = 14  # one cell per CLIP ViT-B/16 patch
 
 # Reference palette (dataviz skill, categorical slots 1-3) and chart ink.
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
@@ -68,20 +69,29 @@ def model_map(cfg: Config, sample: Sample, method: str, shape: tuple[int, int]) 
 def evaluate(cfg: Config, human_source: str) -> list[dict]:
     """One row per (sample, method) with all metrics. Writes results/metrics_<source>.csv."""
     samples = load_manifest(cfg)
+    g = TEXTURE_GRID
+    control = to_grid(center_prior((g * 16, g * 16), cfg.model.center_sigma_frac), g)
     rows: list[dict] = []
     for s in samples:
         human = load_human_heatmap(cfg, s, human_source)
         if human is None:
             continue
         points = load_points(cfg, s, human_source)
+        texture = texture_energy(load_image(s), g)
+        human_grid = to_grid(human, g)
+        human_tex = {"human_texture_rho": texture_affinity(human_grid, texture),
+                     "human_texture_rho_ctr": texture_affinity(human_grid, texture, control)}
         for method in all_methods(cfg):
             model = model_map(cfg, s, method, human.shape)
             if model is None:
                 continue
             m = compute_all(human, model, points=points, topk_fracs=cfg.heatmap.topk_fracs)
+            model_grid = to_grid(model, g)
+            m["texture_rho"] = texture_affinity(model_grid, texture)
+            m["texture_rho_ctr"] = texture_affinity(model_grid, texture, control)
             row = {"id": s.id, "method": method, "group": group_of(cfg, method),
                    "human_source": human_source, "prompt": s.prompt,
-                   "coherence_score": s.coherence_score, **m}
+                   "coherence_score": s.coherence_score, **m, **human_tex}
             row["disagreement"] = disagreement_score(row)
             rows.append(row)
     if not rows:
@@ -116,8 +126,8 @@ def summarize(rows: list[dict], methods: list[str]) -> list[dict]:
             continue
         agg: dict = {"method": method, "group": sub[0]["group"], "n": len(sub)}
         for k in sub[0]:
-            if k in ("id", "method", "group", "human_source", "prompt"):
-                continue
+            if k in ("id", "method", "group", "human_source", "prompt") or k.startswith("human_"):
+                continue  # human_* columns repeat per method; ablation_summary reports them once
             vals = np.array([r[k] for r in sub if r.get(k) is not None], dtype=float)
             vals = vals[~np.isnan(vals)]
             agg[k] = float(vals.mean()) if vals.size else float("nan")
@@ -132,13 +142,36 @@ def human_border_mass(cfg: Config, human_source: str) -> float:
     return float(np.mean(vals)) if vals else float("nan")
 
 
+def _paired_p(rows: list[dict], method: str, key: str) -> float:
+    """Wilcoxon signed-rank p for `key` of `method` vs. the same images' `human_<key>`."""
+    from scipy.stats import wilcoxon
+
+    pairs = np.array([(r[key], r[f"human_{key}"]) for r in rows if r["method"] == method],
+                     dtype=float)
+    pairs = pairs[~np.isnan(pairs).any(axis=1)]
+    if len(pairs) < 2 or np.allclose(pairs[:, 0], pairs[:, 1]):
+        return float("nan")
+    return float(wilcoxon(pairs[:, 0], pairs[:, 1]).pvalue)
+
+
 def ablation_summary(cfg: Config, rows: list[dict], human_source: str) -> list[dict]:
-    """Ablation table: a human reference row, the main maps, then every ablation variant."""
+    """Ablation table: a human reference row, the main maps, then every ablation variant.
+
+    Texture columns: does the map follow image texture more or less than the crowd does? The
+    `*_p` columns are paired Wilcoxon tests against the human value on the same images.
+    """
     reference = [m for m in ("center", "gradcam", "rollout") if m in all_methods(cfg)]
     methods = reference + [m for m in ablation_methods(cfg) if m not in reference]
+    first = {r["id"]: r for r in rows}.values()  # human_* values are identical across methods
     human = {"method": "human (reference)", "group": "reference",
-             "border_mass": human_border_mass(cfg, human_source)}
-    return [human] + summarize(rows, methods)
+             "border_mass": human_border_mass(cfg, human_source),
+             "texture_rho": float(np.nanmean([r["human_texture_rho"] for r in first])),
+             "texture_rho_ctr": float(np.nanmean([r["human_texture_rho_ctr"] for r in first]))}
+    out = summarize(rows, methods)
+    for agg in out:
+        agg["texture_rho_p"] = _paired_p(rows, agg["method"], "texture_rho")
+        agg["texture_rho_ctr_p"] = _paired_p(rows, agg["method"], "texture_rho_ctr")
+    return [human] + out
 
 
 # --------------------------------------------------------------------------- figures

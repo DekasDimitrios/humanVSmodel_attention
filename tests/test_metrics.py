@@ -3,7 +3,7 @@ import pytest
 
 from hvma.heatmaps import center_prior, points_to_heatmap
 from hvma.metrics import (border_mass, cc, compute_all, disagreement_score, iou_topk,
-                          js_divergence, nss, pointing_game, spearman)
+                          js_divergence, nss, pointing_game, spearman, texture_affinity)
 
 
 @pytest.fixture
@@ -66,3 +66,19 @@ def test_border_mass_uniform_center_and_edge():
     assert border_mass(center_prior((70, 70), sigma_frac=0.1)) < 0.05
     edge = np.zeros((70, 70)); edge[:, :3] = 1.0
     assert border_mass(edge) == pytest.approx(1.0)
+
+
+def test_texture_affinity_plain_and_centre_controlled():
+    rng = np.random.default_rng(0)
+    texture = rng.random((14, 14))
+    assert texture_affinity(texture, texture) == pytest.approx(1.0)
+    assert texture_affinity(-texture, texture) == pytest.approx(-1.0)
+    assert np.isnan(texture_affinity(np.zeros((14, 14)), texture))
+    # a map that follows only the control looks texture-driven until the control is removed
+    control = center_prior((14, 14), sigma_frac=0.25)
+    tex_with_centre = control + 0.1 * texture
+    centre_map = control + 0.05 * rng.random((14, 14))  # centre + noise unrelated to texture
+    assert texture_affinity(centre_map, tex_with_centre) > 0.7
+    assert abs(texture_affinity(centre_map, tex_with_centre, control)) < 0.25
+    # a map that does follow the texture keeps a high partial correlation
+    assert texture_affinity(tex_with_centre, tex_with_centre, control) > 0.9

@@ -107,6 +107,22 @@ def inpaint_tokens(grid: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return normalize(out)
 
 
+def to_grid(hm: np.ndarray, g: int) -> np.ndarray:
+    """Average a map down to a (g, g) grid of equal cells, e.g. one cell per ViT patch."""
+    cell = 16
+    a = resize(hm, (g * cell, g * cell))
+    return a.reshape(g, cell, g, cell).mean(axis=(1, 3))
+
+
+def texture_energy(img: Image.Image, g: int = 14, size: int = 224) -> np.ndarray:
+    """Mean Sobel gradient magnitude per cell of a (g, g) grid, on the image as a ViT sees it
+    (greyscale, `size` x `size`). High = edges and fine detail; low = flat regions."""
+    from scipy.ndimage import sobel
+
+    x = np.asarray(img.convert("L").resize((size, size), Image.BICUBIC), dtype=np.float32) / 255
+    return to_grid(np.hypot(sobel(x, 0), sobel(x, 1)), g)
+
+
 def threshold_topk(hm: np.ndarray, frac: float) -> np.ndarray:
     """Boolean mask of the top `frac` fraction of pixels by value."""
     if not 0 < frac <= 1:

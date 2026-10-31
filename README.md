@@ -67,9 +67,10 @@ hvma evaluate --human live
   and on this data none does.
 - **Last-layer CLIP saliency is anti-correlated with people** (Grad-CAM cc −0.19, rollout −0.17;
   pointing 0.03, where a random map scores 0.10). 65% of its mass sits in the outer border of
-  the image, versus 16% for the crowd. The bias belongs to the **last block**: one block earlier,
-  Grad-CAM moves onto the subject (cc +0.20, pointing 0.42). Masking high-norm "artefact"
-  tokens does not change it.
+  the image, versus 16% for the crowd, and it sits on the **flattest, least-textured** patches
+  (texture ρ −0.37 for Grad-CAM, −0.55 for rollout; +0.41 for the crowd). The bias belongs to
+  the **last block**: one block earlier, Grad-CAM moves onto the subject (cc +0.20, pointing
+  0.42). Masking high-norm "artefact" tokens does not change it.
 - **Registers fix attention in DINOv2** (cc 0.06 → 0.38, pointing 0.03 → 0.62). That map isn't
   prompt-conditioned, though: it finds the main object, not the glitch, and it still trails the
   centre prior. On these images, no CLIP or DINOv2 map localises glitches the way people do.
@@ -80,19 +81,24 @@ needs tap points) is not reported; one prompt pair and one CLIP model (ViT-B/16)
 ### Where humans and the model disagree most
 
 Using Grad-CAM one block before the last (`gradcam_l10`), the variant that escapes the edge bias,
-the six least-agreeing images show a real disagreement. Both look at the subject, but **people
-flag local, logical errors** (a second cup, mismatched irises, a deformed ferry), while **Grad-CAM
-picks texture-rich regions** (hair, a stormy sky, sparkles). CLIP's "artefact" direction seems
-to track a global AI-art look more than the specific thing that is broken.
+the six least-agreeing images show a real disagreement. Both look at the subject, but at
+different parts of it: **people flag a specific, local error** (a second cup, mismatched irises,
+a deformed ferry) and Grad-CAM lands elsewhere (hair, sky, highlights).
+
+That looked like Grad-CAM preferring texture-rich regions, so we measured it on all 40 images:
+it doesn't. `gradcam_l10` follows image texture *as much as people do* (ρ 0.21 vs 0.24 once the
+centre prior is partialled out; paired Wilcoxon p = 0.96), and in five of these six images the
+crowd's taps track texture more than Grad-CAM does. Whatever pulls the model away from the
+error, it isn't detail or edges. See *Texture* below.
 
 ![disagreement gallery, gradcam_l10](results/figures/disagreement_gallery_gradcam_l10.png)
 
 1. `s0020` *Einstein drinking coffee* — people tap the two cups (one at his mouth, one floating
-   below); Grad-CAM lights his hair and jacket. The duplicated object is invisible to it.
+   below); Grad-CAM lights his hair and jacket and misses the duplicated cup.
 2. `s0030` *dead city* — the crowd marks the fire-lit arches at lower left; Grad-CAM marks the
    sky and spires.
 3. `s0036` *crystal tiger* — people tap the muzzle; Grad-CAM scatters over bokeh highlights and
-   ear tips, which in a prismatic render look "glitchy" everywhere.
+   ear tips.
 4. `s0004` *eyes* — people tap both irises (two mismatched eyes fused into one face); Grad-CAM
    marks the brow and a corner of skin.
 5. `s0016` *cake shaped like New York* — people converge on the malformed ferry; Grad-CAM spreads
@@ -125,14 +131,16 @@ Last-layer CLIP Grad-CAM and rollout put ~65% of their mass in the outer border 
 centre gaussian (`center`) beats both by a wide margin, so every number here should be read
 against it. Each ablation variant tests one explanation (`results/ablation.csv`):
 
-| map | what it tests | cc | pointing | border mass |
-|---|---|---|---|---|
-| `center` | centre-bias baseline | **0.50** | **0.68** | 0.12 |
-| `gradcam` | main method, last block | −0.19 | 0.03 | 0.65 |
-| `gradcam_l10` / `l8` / `l6` / `l4` | earlier blocks | 0.20 / 0.02 / 0.02 / 0.13 | 0.42 / 0.30 / 0.25 / 0.38 | 0.36–0.50 |
-| `gradcam_masked` | in-paint high-norm tokens | −0.18 | 0.03 | 0.64 |
-| `dinov2_attn` | DINOv2 CLS attention | 0.06 | 0.03 | 0.49 |
-| `dinov2reg_attn` | same, model trained with registers | 0.38 | 0.62 | 0.35 |
+| map | what it tests | cc | pointing | border mass | texture ρ (│centre) |
+|---|---|---|---|---|---|
+| human taps | reference | — | — | 0.16 | +0.41 (+0.24) |
+| `center` | centre-bias baseline | **0.50** | **0.68** | 0.12 | +0.37 (−0.02) |
+| `gradcam` | main method, last block | −0.19 | 0.03 | 0.65 | −0.37 (−0.29) |
+| `rollout` | main method, all blocks | −0.17 | 0.03 | 0.64 | −0.55 (−0.49) |
+| `gradcam_l10` / `l8` / `l6` / `l4` | earlier blocks | 0.20 / 0.02 / 0.02 / 0.13 | 0.42 / 0.30 / 0.25 / 0.38 | 0.36–0.50 | +0.29 / 0.00 / −0.03 / +0.24 |
+| `gradcam_masked` | in-paint high-norm tokens | −0.18 | 0.03 | 0.64 | −0.32 (−0.25) |
+| `dinov2_attn` | DINOv2 CLS attention | 0.06 | 0.03 | 0.49 | +0.25 (+0.16) |
+| `dinov2reg_attn` | same, model trained with registers | 0.38 | 0.62 | 0.35 | +0.43 (+0.33) |
 
 - The edge bias comes from the **last block**: one block earlier (`gradcam_l10`) the map moves
   onto the subject and correlates positively.
@@ -141,6 +149,18 @@ against it. Each ablation variant tests one explanation (`results/ablation.csv`)
 - **Registers fix DINOv2.** Plain DINOv2 attention is spread evenly (border mass 0.49); the register
   variant lands on the subject. It isn't prompt-conditioned, so this is object-centric
   attention rather than glitch detection, and it still trails `center`.
+
+**Texture.** Per image, the Spearman correlation between a map and the image's texture energy
+(mean Sobel gradient magnitude per ViT patch, on the 224 px input), averaged over the 40 images.
+The value in brackets partials out the centre prior: textured regions tend to be the subject,
+which tends to be central, and the centre map dropping from +0.37 to −0.02 shows the control
+does its job. Paired Wilcoxon tests against the crowd on the same images are in
+`results/ablation.csv` (`texture_rho_p`, `texture_rho_ctr_p`).
+
+- Last-layer maps prefer the flattest patches, even after the centre control (p < 1e-10 vs the
+  crowd). That fits the edge bias: borders and backgrounds are the flat parts of these images.
+- `gradcam_l10` matches the crowd's texture preference (p = 0.96 with the control), so texture
+  does not explain where it disagrees with people.
 
 ![edge-bias ablation](results/figures/ablation_edge_bias.png)
 

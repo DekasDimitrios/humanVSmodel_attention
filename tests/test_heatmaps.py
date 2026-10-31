@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 
 from hvma.heatmaps import (argmax_point, center_prior, inpaint_tokens, normalize, outlier_tokens,
-                           points_to_heatmap, resize, threshold_topk, to_distribution)
+                           points_to_heatmap, resize, texture_energy, threshold_topk,
+                           to_distribution, to_grid)
+from PIL import Image
 
 
 def test_normalize_range_and_constant():
@@ -72,3 +74,14 @@ def test_outlier_tokens_and_inpainting():
     assert out[1, 3] == out[2, 2]  # in-painted from its (uniform) neighbourhood
     assert out[0, 0] == 1.0  # untouched cells keep their relative values
     assert np.array_equal(inpaint_tokens(grid, np.zeros_like(mask)), normalize(grid))
+
+
+def test_to_grid_and_texture_energy():
+    hm = np.zeros((70, 70), dtype=np.float32)
+    hm[:35, :35] = 1.0
+    g = to_grid(hm, 2)
+    assert g.shape == (2, 2) and g[0, 0] > 0.9 and g[1, 1] < 0.1
+    img = np.zeros((224, 224), dtype=np.uint8)
+    img[:, 112:] = (np.arange(112) // 2 % 2) * 255  # 2-px stripes (1-px ones have no Sobel gradient)
+    tex = texture_energy(Image.fromarray(img).convert("RGB"), g=2)
+    assert tex[:, 1].min() > 10 * tex[:, 0].max()  # detail on the right, flat on the left
