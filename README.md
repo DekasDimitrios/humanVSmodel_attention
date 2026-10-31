@@ -24,10 +24,24 @@ ignores, and vice versa.
 2. **Live (small, paid).** A Locate job on a handful of fresh images through the Python SDK, to
    check the pipeline end-to-end on real crowd output and to use the product for real.
 
+## Setup
+
+```bash
+conda create -n hvma python=3.12 pip && conda activate hvma
+# Pick the torch build for your GPU first. cu126 still ships Pascal (GTX 10xx) kernels;
+# newer CUDA builds dropped them. CPU-only also works (40 images take a few minutes).
+pip install torch --index-url https://download.pytorch.org/whl/cu126
+pip install -e ".[dev]"
+cp .env.example .env       # only needed for the live Rapidata job
+pytest -q
+```
+
+Run every command from the repo root (config and data paths are relative). Fetching streams
+the dataset and peaks at ~2.5 GB RAM.
+
 ## Reproduce
 
 ```bash
-pip install -e ".[dev]"
 hvma fetch --n 40          # stream 40 samples from Hugging Face
 hvma saliency              # CLIP Grad-CAM + attention rollout
 hvma evaluate --human dataset
