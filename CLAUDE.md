@@ -114,7 +114,8 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 
 - `hvma evaluate --human dataset` runs on ≥30 images and `results/summary.csv` exists.
 - ~~At least one small live Locate job ran~~ — dropped: the project is cost-free (2026-10-31).
-- `results/figures/disagreement_gallery.png` shows the 6 images where humans and the model disagree
-  most, with a one-line interpretation each in the README.
+- `results/figures/disagreement_gallery_gradcam_l10.png` shows the 6 images where humans and the
+  model disagree most, with a one-line interpretation each in the README. (`gradcam_l10`, not
+  last-layer `gradcam`, whose top-6 are all edge bias; that gallery is kept for contrast.)
 - README has: 1 paragraph on the idea, 1 figure, 3 bullet findings, how to reproduce in 5 commands.
 - Mention in the README that the repo was built with Claude Code (one sentence; no more).

@@ -11,6 +11,7 @@ results/*
 results/figures/*
 !results/figures/ablation_edge_bias.png
 !results/figures/disagreement_gallery.png
+!results/figures/disagreement_gallery_gradcam_l10.png
 
 # python
 __pycache__/

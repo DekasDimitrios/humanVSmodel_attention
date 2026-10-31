@@ -189,10 +189,15 @@ def _top_disagreeing(rows: list[dict], method: str, k: int) -> list[dict]:
 
 def disagreement_gallery(cfg: Config, rows: list[dict], human_source: str,
                          method: str = "gradcam", k: int = 6) -> Path:
-    """Top-k most disagreeing images: image | human | model, one row each."""
+    """Top-k most disagreeing images: image | human | model, one row each.
+
+    Written to disagreement_gallery.png for gradcam, disagreement_gallery_<method>.png otherwise.
+    """
     plt = _plt()
     samples = {s.id: s for s in load_manifest(cfg)}
     sub = _top_disagreeing(rows, method, k)
+    if not sub:
+        raise ValueError(f"no evaluated rows for method {method!r}")
     fig, axes = plt.subplots(len(sub), 3, figsize=(9, 3 * len(sub)))
     axes = np.atleast_2d(axes)
     for i, r in enumerate(sub):
@@ -207,7 +212,8 @@ def disagreement_gallery(cfg: Config, rows: list[dict], human_source: str,
             ax.axis("off")
     fig.tight_layout()
     cfg.paths.figures_dir.mkdir(parents=True, exist_ok=True)
-    out = cfg.paths.figures_dir / "disagreement_gallery.png"
+    suffix = "" if method == "gradcam" else f"_{method}"
+    out = cfg.paths.figures_dir / f"disagreement_gallery{suffix}.png"
     fig.savefig(out, dpi=120)
     plt.close(fig)
     return out

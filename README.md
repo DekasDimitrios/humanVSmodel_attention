@@ -77,25 +77,46 @@ hvma evaluate --human live
 Caveats: 40 images; the dataset gives aggregated heatmaps rather than raw taps, so NSS (which
 needs tap points) is not reported; one prompt pair and one CLIP model (ViT-B/16).
 
-### Where humans and Grad-CAM disagree most
+### Where humans and the model disagree most
 
-![disagreement gallery](results/figures/disagreement_gallery.png)
+Using Grad-CAM one block before the last (`gradcam_l10`), the variant that escapes the edge bias,
+the six least-agreeing images show a real disagreement. Both look at the subject, but **people
+flag local, logical errors** (a second cup, mismatched irises, a deformed ferry), while **Grad-CAM
+picks texture-rich regions** (hair, a stormy sky, sparkles). CLIP's "artefact" direction seems
+to track a global AI-art look more than the specific thing that is broken.
+
+![disagreement gallery, gradcam_l10](results/figures/disagreement_gallery_gradcam_l10.png)
+
+1. `s0020` *Einstein drinking coffee* — people tap the two cups (one at his mouth, one floating
+   below); Grad-CAM lights his hair and jacket. The duplicated object is invisible to it.
+2. `s0030` *dead city* — the crowd marks the fire-lit arches at lower left; Grad-CAM marks the
+   sky and spires.
+3. `s0036` *crystal tiger* — people tap the muzzle; Grad-CAM scatters over bokeh highlights and
+   ear tips, which in a prismatic render look "glitchy" everywhere.
+4. `s0004` *eyes* — people tap both irises (two mismatched eyes fused into one face); Grad-CAM
+   marks the brow and a corner of skin.
+5. `s0016` *cake shaped like New York* — people converge on the malformed ferry; Grad-CAM spreads
+   over the skyline.
+6. `s0029` *crystal screensaver* — the mildest case (cc −0.10): people tap the cluster's base and
+   a stray rock, Grad-CAM the crystal tips. With a fully stylised subject, neither has an
+   obvious error to find.
+
+<details>
+<summary>Same view for last-layer Grad-CAM: all edge bias</summary>
+
+![disagreement gallery, gradcam](results/figures/disagreement_gallery.png)
 
 All six are the edge bias at work: people tap on the subject while Grad-CAM tiles the empty
-background. None is a case of the model finding a different glitch.
+background.
 
-1. `s0010` *banana character* — people tap the face and the stubby hands; Grad-CAM covers the
-   plain grey backdrop.
-2. `s0025` *anthropomorphic Thwomp woman* — the crowd converges on the torso's anatomy; Grad-CAM
-   outlines the white background around the figure.
-3. `s0037` *woman with flowing hair* — people go for the outstretched hand, a classic generation
-   failure; Grad-CAM marks the empty wall.
-4. `s0031` *helicopter with car wheels* — taps land where the car and helicopter fuse (front
-   wheel, rotor hub); Grad-CAM marks tarmac and sky.
-5. `s0024` *chakat* — people tap the oversized ears and the face; Grad-CAM spreads over the
-   painted foliage.
-6. `s0000` *wood-cut otter* — people tap the tail emerging from the whirlpool; Grad-CAM traces
-   the print's frame.
+1. `s0010` *banana character* — face and stubby hands vs. the grey backdrop.
+2. `s0025` *anthropomorphic Thwomp woman* — the torso's anatomy vs. the white background.
+3. `s0037` *woman with flowing hair* — the outstretched hand vs. the empty wall.
+4. `s0031` *helicopter with car wheels* — where car and helicopter fuse vs. tarmac and sky.
+5. `s0024` *chakat* — oversized ears and face vs. painted foliage.
+6. `s0000` *wood-cut otter* — the tail in the whirlpool vs. the print's frame.
+
+</details>
 
 ### Edge-bias ablation (dataset heatmaps, 40 images)
 

@@ -200,7 +200,9 @@ def _echo_row(agg: dict) -> None:
 
 @app.command()
 def report(human: str = typer.Option("dataset", help="'dataset' or 'live'"),
-           method: str = typer.Option("gradcam", help="method for the disagreement gallery")) -> None:
+           method: list[str] = typer.Option(  # noqa: B008
+               ["gradcam", "gradcam_l10"],
+               help="method(s) to draw a disagreement gallery for; repeat the flag for several")) -> None:
     """Overlays, figures, and results/agreement.json for the viewer."""
     from .report import (ablation_chart, ablation_gallery, ablation_summary, disagreement_gallery,
                          metric_histograms, write_agreement_json, write_overlays)
@@ -209,7 +211,10 @@ def report(human: str = typer.Option("dataset", help="'dataset' or 'live'"),
     c = cfg()
     rows = _evaluate(c, human)
     write_overlays(c, human)
-    typer.echo(f"gallery    → {disagreement_gallery(c, rows, human, method)}")
+    evaluated = {r["method"] for r in rows}
+    for m in method:
+        if m in evaluated:  # e.g. gradcam_l10 only exists when the ablation ran
+            typer.echo(f"gallery    → {disagreement_gallery(c, rows, human, m)}")
     typer.echo(f"histograms → {metric_histograms(c, rows)}")
     if c.ablation.enabled:
         typer.echo(f"ablation   → {ablation_chart(c, ablation_summary(c, rows, human))}")
