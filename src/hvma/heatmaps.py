@@ -70,6 +70,43 @@ def points_to_heatmap(
     return normalize(gaussian_filter(canvas, sigma=sigma))
 
 
+def center_prior(size: tuple[int, int], sigma_frac: float = 0.2) -> np.ndarray:
+    """Isotropic gaussian at the image centre: the classic centre-bias baseline in saliency work.
+
+    `sigma_frac` is relative to image width, like `points_to_heatmap`.
+    """
+    h, w = size
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    cy, cx = (h - 1) / 2, (w - 1) / 2
+    sigma = max(sigma_frac * w, 0.5)
+    return normalize(np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma**2)))
+
+
+def outlier_tokens(norms: np.ndarray, ratio: float = 2.0) -> np.ndarray:
+    """Boolean mask of high-norm patch tokens (norm > ratio x median).
+
+    ViTs park global information in a few low-information patches whose hidden-state norm is
+    an order of magnitude above the rest (Darcet et al. 2024, "Vision Transformers Need
+    Registers"); they show up as spurious hot spots in attention and gradient maps.
+    """
+    return np.asarray(norms) > ratio * np.median(norms)
+
+
+def inpaint_tokens(grid: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    """Replace masked cells of a token grid with the median of their unmasked 8-neighbours
+    (or of all unmasked cells if a neighbourhood is fully masked), then re-normalise."""
+    grid = np.asarray(grid, dtype=np.float32)
+    if not mask.any() or mask.all():
+        return normalize(grid)
+    out = grid.copy()
+    h, w = grid.shape
+    for r, c in zip(*np.nonzero(mask)):
+        r0, r1, c0, c1 = max(r - 1, 0), min(r + 2, h), max(c - 1, 0), min(c + 2, w)
+        nb = grid[r0:r1, c0:c1][~mask[r0:r1, c0:c1]]
+        out[r, c] = np.median(nb) if nb.size else np.median(grid[~mask])
+    return normalize(out)
+
+
 def threshold_topk(hm: np.ndarray, frac: float) -> np.ndarray:
     """Boolean mask of the top `frac` fraction of pixels by value."""
     if not 0 < frac <= 1:

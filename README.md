@@ -61,6 +61,32 @@ hvma evaluate --human live
 
 _TODO — three bullets and one figure, once the numbers are in._
 
+### Edge-bias ablation (dataset heatmaps, 40 images)
+
+Last-layer CLIP Grad-CAM and rollout put ~65% of their mass in the outer border of the image
+(a uniform map: 49%; human taps: 16%) and end up *anti*-correlated with people. A model-free
+centre gaussian (`center`) beats both by a wide margin, so every number here should be read
+against it. Each ablation variant tests one explanation (`results/ablation.csv`):
+
+| map | what it tests | cc | pointing | border mass |
+|---|---|---|---|---|
+| `center` | centre-bias baseline | **0.50** | **0.68** | 0.12 |
+| `gradcam` | main method, last block | −0.19 | 0.03 | 0.65 |
+| `gradcam_l10` / `l8` / `l6` / `l4` | earlier blocks | 0.20 / 0.02 / 0.02 / 0.13 | 0.42 / 0.30 / 0.25 / 0.38 | 0.36–0.50 |
+| `gradcam_masked` | in-paint high-norm tokens | −0.18 | 0.03 | 0.64 |
+| `dinov2_attn` | DINOv2 CLS attention | 0.06 | 0.03 | 0.49 |
+| `dinov2reg_attn` | same, model trained with registers | 0.38 | 0.62 | 0.35 |
+
+- The edge bias comes from the **last block**: one block earlier (`gradcam_l10`) the map moves
+  onto the subject and correlates positively.
+- **Masking high-norm tokens does nothing.** CLIP has ~10 of them per image, but only 7% sit in
+  the border and 3% of Grad-CAM's top patches are outliers, so they are not what Grad-CAM sees.
+- **Registers fix DINOv2.** Plain DINOv2 attention is spread evenly (border mass 0.49); the register
+  variant lands on the subject. It isn't prompt-conditioned, so this is object-centric
+  attention rather than glitch detection, and it still trails `center`.
+
+![edge-bias ablation](results/figures/ablation_edge_bias.png)
+
 ## Notes
 
 - Built with Claude Code; `CLAUDE.md` holds the working agreement.

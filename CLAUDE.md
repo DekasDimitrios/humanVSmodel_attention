@@ -11,7 +11,10 @@ A weekend-scale experiment: **do humans and a vision model look at the same plac
   2. *Live (costs money):* a Rapidata **Locate** job via the `rapidata` Python SDK on a small set
      of fresh images. This is the "did something cool with the product" part of the job application.
 - **Model side:** saliency maps from a CLIP vision tower — Grad-CAM on the last transformer block
-  and attention rollout — targeted at an "artifact / glitch" text prompt.
+  and attention rollout — targeted at an "artifact / glitch" text prompt, read against a
+  model-free `center` baseline (human taps are strongly centre-biased). An edge-bias ablation
+  (earlier-layer Grad-CAM, high-norm-token masking, DINOv2 with/without registers) is reported
+  separately in `results/ablation.csv`.
 - **Output:** per-image agreement metrics (pointing game, IoU@top-k, correlation, NSS), a CSV,
   figures, and a tiny FastAPI viewer that sorts images by disagreement so the interesting cases
   surface first.
@@ -28,9 +31,11 @@ src/hvma/                 the package ("human vs model attention")
   data.py                 stream HF dataset, save images, convert dataset heatmaps to arrays
   heatmaps.py             points -> gaussian heatmap; normalise, resize, threshold
   rapidata_job.py         build/estimate/run a Locate job; parse raw results into point sets
-  model.py                CLIP saliency: gradcam + attention rollout
+  model.py                CLIP saliency: gradcam + attention rollout; ablation maps (earlier-layer
+                          gradcam, high-norm-token masking, DINOv2 with/without registers)
   metrics.py              agreement metrics between two heatmaps
-  report.py               overlays, CSV, summary figures, agreement.json for the viewer
+  report.py               overlays, CSV, summary figures, agreement.json for the viewer;
+                          main methods -> summary.csv, edge-bias ablation -> ablation.csv
   cli.py                  typer CLI; `hvma --help`
 viewer/                   FastAPI app serving results/ + a single static index.html
 tests/                    pytest unit tests for heatmaps + metrics (pure numpy, fast)

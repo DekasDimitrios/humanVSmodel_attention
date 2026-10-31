@@ -6,6 +6,10 @@ data/*
 !data/README.md
 results/*
 !results/README.md
+# figures embedded in the README (charts only; galleries contain dataset images)
+!results/figures/
+results/figures/*
+!results/figures/ablation_edge_bias.png
 
 # python
 __pycache__/

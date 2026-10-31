@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from hvma.heatmaps import (argmax_point, normalize, points_to_heatmap, resize, threshold_topk,
-                           to_distribution)
+from hvma.heatmaps import (argmax_point, center_prior, inpaint_tokens, normalize, outlier_tokens,
+                           points_to_heatmap, resize, threshold_topk, to_distribution)
 
 
 def test_normalize_range_and_constant():
@@ -51,3 +51,24 @@ def test_resize_shape_and_values():
     assert out.shape == (70, 70)
     x, y = argmax_point(out)
     assert abs(x - 0.5) < 0.1 and abs(y - 0.5) < 0.1
+
+
+def test_center_prior_peaks_in_the_middle():
+    hm = center_prior((41, 61), sigma_frac=0.2)
+    assert hm.shape == (41, 61) and hm.max() == 1.0
+    x, y = argmax_point(hm)
+    assert abs(x - 0.5) < 0.02 and abs(y - 0.5) < 0.03
+
+
+def test_outlier_tokens_and_inpainting():
+    norms = np.ones((5, 5))
+    norms[1, 3] = 20.0  # one high-norm token
+    mask = outlier_tokens(norms, ratio=2.0)
+    assert mask.sum() == 1 and mask[1, 3]
+    grid = np.full((5, 5), 0.2, dtype=np.float32)
+    grid[0, 0] = 1.0  # keeps the range non-degenerate after normalising
+    grid[1, 3] = 50.0  # the outlier's hot spot dominates the raw map
+    out = inpaint_tokens(grid, mask)
+    assert out[1, 3] == out[2, 2]  # in-painted from its (uniform) neighbourhood
+    assert out[0, 0] == 1.0  # untouched cells keep their relative values
+    assert np.array_equal(inpaint_tokens(grid, np.zeros_like(mask)), normalize(grid))

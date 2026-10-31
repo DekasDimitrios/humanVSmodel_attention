@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from hvma.heatmaps import points_to_heatmap
-from hvma.metrics import (cc, compute_all, disagreement_score, iou_topk, js_divergence, nss,
-                          pointing_game, spearman)
+from hvma.heatmaps import center_prior, points_to_heatmap
+from hvma.metrics import (border_mass, cc, compute_all, disagreement_score, iou_topk,
+                          js_divergence, nss, pointing_game, spearman)
 
 
 @pytest.fixture
@@ -54,7 +54,15 @@ def test_compute_all_keys_and_disagreement_order(maps):
     same, other = maps
     good = compute_all(same, same, points=[(0.3, 0.3)])
     bad = compute_all(same, other, points=[(0.3, 0.3)])
-    for k in ("cc", "spearman", "js_divergence", "pointing_game", "iou@10", "iou@20", "iou@30", "nss"):
+    for k in ("cc", "spearman", "js_divergence", "pointing_game", "border_mass", "iou@10", "iou@20",
+              "iou@30", "nss"):
         assert k in good
     assert disagreement_score(good) < disagreement_score(bad)
     assert 0.0 <= disagreement_score(good) <= 1.0
+
+
+def test_border_mass_uniform_center_and_edge():
+    assert border_mass(np.ones((70, 70))) == pytest.approx(1 - (5 / 7) ** 2, abs=1e-6)
+    assert border_mass(center_prior((70, 70), sigma_frac=0.1)) < 0.05
+    edge = np.zeros((70, 70)); edge[:, :3] = 1.0
+    assert border_mass(edge) == pytest.approx(1.0)

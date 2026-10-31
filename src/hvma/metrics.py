@@ -11,6 +11,8 @@ Metric cheat-sheet (standard saliency-evaluation metrics, see Bylinskii et al. 2
 - nss:           model map z-scored, averaged at human fixation points. Higher is better;
                  ~0 means chance. Needs the raw human points.
 - js_divergence: symmetric divergence between the two maps as distributions. 0 = identical.
+- border_mass:   not an agreement metric — the share of the *model* map's mass in the outer
+                 band of the image (see `border_mass`). Quantifies the edge bias.
 """
 
 from __future__ import annotations
@@ -90,6 +92,20 @@ def js_divergence(human: np.ndarray, model: np.ndarray) -> float:
     return float(jensenshannon(p, q, base=2) ** 2)
 
 
+BORDER_FRAC = 1 / 7  # two patches of a 14x14 ViT grid
+
+
+def border_mass(hm: np.ndarray, frac: float = BORDER_FRAC) -> float:
+    """Share of the map's mass within `frac` of any image edge.
+
+    A uniform map scores the band's area, 1 - (1 - 2*frac)^2 (0.49 for frac=1/7).
+    """
+    p = to_distribution(hm)
+    h, w = p.shape
+    bh, bw = max(1, round(frac * h)), max(1, round(frac * w))
+    return float(1.0 - p[bh:h - bh, bw:w - bw].sum())
+
+
 def compute_all(
     human: np.ndarray,
     model: np.ndarray,
@@ -102,6 +118,7 @@ def compute_all(
         "spearman": spearman(human, model),
         "js_divergence": js_divergence(human, model),
         "pointing_game": pointing_game(human, model, frac=0.2),
+        "border_mass": border_mass(model),
     }
     for f in topk_fracs:
         out[f"iou@{int(round(f * 100))}"] = iou_topk(human, model, frac=f)

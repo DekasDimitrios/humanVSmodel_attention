@@ -53,30 +53,42 @@ def inspect_dataset() -> None:
 
 @app.command()
 def saliency(limit: int = typer.Option(None, help="only the first N samples")) -> None:
-    """Compute CLIP Grad-CAM + attention rollout for every image in the manifest."""
+    """Compute CLIP Grad-CAM + attention rollout (and the edge-bias ablation maps) per image."""
     import numpy as np
 
     from .data import load_image, load_manifest
-    from .model import ClipSaliency
+    from .model import ClipSaliency, ClsAttention, pick_device
     from .report import saliency_path
 
     c = cfg()
     samples = load_manifest(c)[:limit]
     typer.echo(f"loading {c.model.name} …")
-    sal = ClipSaliency(c.model)
+    sal = ClipSaliency(c.model, c.ablation)
     c.paths.saliency_dir.mkdir(parents=True, exist_ok=True)
-    scores = {}
-    with typer.progressbar(samples, label="saliency") as bar:
+    scores, outliers, n_maps = {}, {}, 0
+    with typer.progressbar(samples, label="clip") as bar:
         for s in bar:
             out = sal(load_image(s))
-            if out.gradcam is not None:
-                np.save(saliency_path(c, s, "gradcam"), out.gradcam)
-            if out.rollout is not None:
-                np.save(saliency_path(c, s, "rollout"), out.rollout)
+            for method, grid in out.maps.items():
+                np.save(saliency_path(c, s, method), grid)
+                n_maps += 1
             scores[s.id] = out.score
+            outliers[s.id] = out.n_outliers
     with (c.paths.saliency_dir / "artefactness_scores.json").open("w") as fh:
         json.dump(scores, fh, indent=1)
-    typer.echo(f"wrote {len(samples)} × {len(c.model.methods)} maps to {c.paths.saliency_dir}")
+    if c.ablation.enabled:
+        with (c.paths.saliency_dir / "outlier_tokens.json").open("w") as fh:
+            json.dump(outliers, fh, indent=1)
+        del sal  # free GPU memory before loading the next models
+        for name, model_id in c.ablation.register_models.items():
+            typer.echo(f"loading {model_id} …")
+            attn = ClsAttention(model_id, pick_device(c.model.device))
+            with typer.progressbar(samples, label=name) as bar:
+                for s in bar:
+                    np.save(saliency_path(c, s, f"{name}_attn"), attn(load_image(s)))
+                    n_maps += 1
+            del attn
+    typer.echo(f"wrote {n_maps} maps for {len(samples)} images to {c.paths.saliency_dir}")
 
 
 # --------------------------------------------------------------------------- rapidata
@@ -157,29 +169,51 @@ def parse_results(raw: Path = typer.Argument(..., exists=True),
 
 @app.command()
 def evaluate(human: str = typer.Option("dataset", help="'dataset' or 'live'")) -> None:
-    """Metrics for every (sample, method) → results/metrics_<human>.csv + results/summary.csv."""
-    from .report import evaluate as _evaluate, summarize, _write_csv
+    """Metrics for every (sample, method) → metrics_<human>.csv, summary.csv, ablation.csv."""
+    from .report import _write_csv, ablation_summary, main_methods, summarize
+    from .report import evaluate as _evaluate
 
-    rows = _evaluate(cfg(), human)
-    summary = summarize(rows)
-    _write_csv(cfg().paths.results_dir / "summary.csv", summary)
+    c = cfg()
+    rows = _evaluate(c, human)
+    summary = summarize(rows, main_methods(c))
+    _write_csv(c.paths.results_dir / "summary.csv", summary)
+    typer.echo("main methods                         (results/summary.csv)")
     for agg in summary:
-        typer.echo(f"{agg['method']:8s} n={agg['n']:3d} cc={agg['cc']:.3f} iou@20={agg['iou@20']:.3f} "
-                   f"pointing={agg['pointing_game']:.2f} js={agg['js_divergence']:.3f}")
+        _echo_row(agg)
+    if c.ablation.enabled:
+        abl = ablation_summary(c, rows, human)
+        _write_csv(c.paths.results_dir / "ablation.csv", abl)
+        typer.echo("\nedge-bias ablation                   (results/ablation.csv)")
+        for agg in abl:
+            _echo_row(agg)
+
+
+def _echo_row(agg: dict) -> None:
+    def f(key: str, spec: str) -> str:
+        v = agg.get(key)
+        return format(v, spec) if isinstance(v, float) and v == v else "  –  "
+
+    typer.echo(f"  {agg['method']:18s} cc={f('cc', '6.3f')} iou@20={f('iou@20', '.3f')} "
+               f"pointing={f('pointing_game', '.2f')} js={f('js_divergence', '.3f')} "
+               f"border={f('border_mass', '.2f')}")
 
 
 @app.command()
 def report(human: str = typer.Option("dataset", help="'dataset' or 'live'"),
            method: str = typer.Option("gradcam", help="method for the disagreement gallery")) -> None:
     """Overlays, figures, and results/agreement.json for the viewer."""
-    from .report import (disagreement_gallery, evaluate as _evaluate, metric_histograms,
-                         write_agreement_json, write_overlays)
+    from .report import (ablation_chart, ablation_gallery, ablation_summary, disagreement_gallery,
+                         metric_histograms, write_agreement_json, write_overlays)
+    from .report import evaluate as _evaluate
 
     c = cfg()
     rows = _evaluate(c, human)
     write_overlays(c, human)
     typer.echo(f"gallery    → {disagreement_gallery(c, rows, human, method)}")
     typer.echo(f"histograms → {metric_histograms(c, rows)}")
+    if c.ablation.enabled:
+        typer.echo(f"ablation   → {ablation_chart(c, ablation_summary(c, rows, human))}")
+        typer.echo(f"             {ablation_gallery(c, rows, human)}")
     typer.echo(f"viewer     → {write_agreement_json(c, rows, human)}")
 
 

@@ -40,7 +40,8 @@
       <option value="iou@20">IoU@20 ↑</option>
       <option value="coherence">coherence score ↑</option>
     </select></label>
-    <label>method <select id="method"><option>gradcam</option><option>rollout</option></select></label>
+    <label>method <select id="method"></select></label>
+    <label>compare with <select id="other"></select></label>
   </div>
 </header>
 <main id="grid"></main>
@@ -55,11 +56,23 @@ async function load() {
   DATA = await r.json();
   document.getElementById('status').textContent =
     `${DATA.samples.length} images · human source: ${DATA.human_source}`;
+  const groups = DATA.methods || {main: ['gradcam', 'rollout'], ablation: []};
+  for (const [id, pick] of [['method', 'gradcam'], ['other', 'center']]) {
+    const sel = document.getElementById(id);
+    for (const [label, names] of Object.entries(groups)) {
+      if (!names.length) continue;
+      const og = document.createElement('optgroup');
+      og.label = label === 'main' ? 'main methods' : 'edge-bias ablation';
+      for (const n of names) og.appendChild(new Option(n, n, false, n === pick));
+      sel.appendChild(og);
+    }
+  }
   render();
 }
 
 function render() {
   const method = document.getElementById('method').value;
+  const other = document.getElementById('other').value;
   const sortKey = document.getElementById('sort').value;
   const rows = DATA.samples.filter(s => s.methods[method]);
   rows.sort((a, b) => {
@@ -84,13 +97,14 @@ function render() {
           <span>IoU@10/20/30</span><span>${fmt(m['iou@10'])} / ${fmt(m['iou@20'])} / ${fmt(m['iou@30'])}</span>
           <span>pointing game</span><span>${fmt(m.pointing_game)}</span>
           <span>JS div.</span><span>${fmt(m.js_divergence)}</span>
+          <span>border mass</span><span>${fmt(m.border_mass)}</span>
           ${m.nss !== undefined ? `<span>NSS</span><span>${fmt(m.nss)}</span>` : ''}
           <span>dataset coherence</span><span>${fmt(s.coherence_score)}</span>
         </div>
       </div>
       <div><img src="/results/${s.human_overlay}" alt="human"><div class="cap">humans (${DATA.human_source})</div></div>
       <div><img src="/results/${m.overlay}" alt="model"><div class="cap">model · ${method}</div></div>
-      <div><img src="/results/overlays/${s.id}.${method === 'gradcam' ? 'rollout' : 'gradcam'}.jpg" alt="other"><div class="cap">model · ${method === 'gradcam' ? 'rollout' : 'gradcam'} (for reference)</div></div>`;
+      <div><img src="/results/overlays/${s.id}.${other}.jpg" alt="${other}"><div class="cap">${other} · cc ${fmt(s.methods[other]?.cc)} (for reference)</div></div>`;
     grid.appendChild(el);
   }
 }
@@ -99,6 +113,7 @@ function escapeHtml(s) { return (s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;',
 
 document.getElementById('sort').addEventListener('change', render);
 document.getElementById('method').addEventListener('change', render);
+document.getElementById('other').addEventListener('change', render);
 load();
 </script>
 </body>

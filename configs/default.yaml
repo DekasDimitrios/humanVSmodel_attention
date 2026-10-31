@@ -25,7 +25,9 @@ heatmap:
 model:
   name: openai/clip-vit-base-patch16   # patch16 -> 14x14 saliency grid; patch32 is faster but 7x7
   device: auto                         # auto | cpu | cuda | mps
-  methods: [gradcam, rollout]
+  # Main methods (results/summary.csv). `center` is a model-free baseline: a gaussian at the
+  # image centre. Human taps are strongly centre-biased, so every model must be read against it.
+  methods: [gradcam, rollout, center]
   # The saliency target is the CLIP similarity to `positive` prompts minus `negative` prompts.
   positive_prompts:
     - "a photo with visual glitches, distorted artifacts and deformed objects"
@@ -33,6 +35,18 @@ model:
   negative_prompts:
     - "a clean, realistic, coherent photo with no errors"
   rollout_discard_ratio: 0.9           # drop the lowest 90% attention values per layer before rollout
+  center_sigma_frac: 0.2               # `center` baseline: sigma as a fraction of image width
+
+# Edge-bias ablation, reported separately (results/ablation.csv, figures/ablation_*.png).
+# CLIP Grad-CAM puts most of its mass on the image border; each variant tests one explanation.
+ablation:
+  enabled: true
+  gradcam_layers: [4, 6, 8, 10]        # gradcam_l<k>: Grad-CAM on the input of block k (main = 11, the last)
+  outlier_norm_ratio: 2.0              # *_masked: patch tokens with norm > ratio x median count as
+                                       # high-norm outliers and are in-painted from their neighbours
+  register_models:                     # <name>_attn: last-layer CLS attention, without vs. with registers
+    dinov2: facebook/dinov2-base
+    dinov2reg: facebook/dinov2-with-registers-base
 
 rapidata:
   audience_id: global

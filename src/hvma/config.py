@@ -69,10 +69,30 @@ class HeatmapCfg:
 class ModelCfg:
     name: str = "openai/clip-vit-base-patch16"
     device: str = "auto"
-    methods: list[str] = field(default_factory=lambda: ["gradcam", "rollout"])
+    methods: list[str] = field(default_factory=lambda: ["gradcam", "rollout", "center"])
     positive_prompts: list[str] = field(default_factory=list)
     negative_prompts: list[str] = field(default_factory=list)
     rollout_discard_ratio: float = 0.9
+    center_sigma_frac: float = 0.2
+
+
+@dataclass
+class AblationCfg:
+    enabled: bool = True
+    gradcam_layers: list[int] = field(default_factory=lambda: [4, 6, 8, 10])
+    outlier_norm_ratio: float = 2.0
+    register_models: dict[str, str] = field(default_factory=lambda: {
+        "dinov2": "facebook/dinov2-base",
+        "dinov2reg": "facebook/dinov2-with-registers-base",
+    })
+
+    def methods(self) -> list[str]:
+        """Names of the ablation maps, in the order they are reported."""
+        if not self.enabled:
+            return []
+        return ([f"gradcam_l{k}" for k in self.gradcam_layers]
+                + ["gradcam_masked", "rollout_masked"]
+                + [f"{name}_attn" for name in self.register_models])
 
 
 @dataclass
@@ -92,6 +112,7 @@ class Config:
     dataset: DatasetCfg = field(default_factory=DatasetCfg)
     heatmap: HeatmapCfg = field(default_factory=HeatmapCfg)
     model: ModelCfg = field(default_factory=ModelCfg)
+    ablation: AblationCfg = field(default_factory=AblationCfg)
     rapidata: RapidataCfg = field(default_factory=RapidataCfg)
 
 
@@ -120,6 +141,7 @@ def load_config(path: Path | str = DEFAULT_CONFIG) -> Config:
         dataset=_build(DatasetCfg, raw.get("dataset")),
         heatmap=_build(HeatmapCfg, raw.get("heatmap")),
         model=_build(ModelCfg, raw.get("model")),
+        ablation=_build(AblationCfg, raw.get("ablation")),
         rapidata=_build(RapidataCfg, raw.get("rapidata")),
     )
 
