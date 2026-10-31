@@ -2,8 +2,10 @@
 
 Two methods, both operating on Hugging Face `CLIPModel`:
 
-- **gradcam**: Grad-CAM on the patch tokens of the last vision transformer block. Channel
-  weights are the mean gradient of the target score over the patch grid; the CAM is
+- **gradcam**: Grad-CAM on the patch tokens entering the last vision transformer block (the
+  output of its `layer_norm1`, i.e. jacobgil's `blocks[-1].norm1`). Not the block's *output*:
+  the image embedding reads only the CLS token there, so patch tokens get exactly zero gradient.
+  Channel weights are the mean gradient of the target score over the patch grid; the CAM is
   ReLU(sum_c w_c * A_c). This is the ViT adaptation popularised by jacobgil/pytorch-grad-cam,
   implemented here directly to avoid the dependency.
 - **rollout**: attention rollout (Abnar & Zuidema 2020) from the CLS token to patches, with
@@ -41,6 +43,14 @@ def pick_device(pref: str) -> torch.device:
     return torch.device("cpu")
 
 
+def _embeds(out: torch.Tensor | object) -> torch.Tensor:
+    """Projected embeddings from `get_{text,image}_features`.
+
+    transformers 4.x returns the tensor; 5.x returns a model output with it in `pooler_output`.
+    """
+    return out if isinstance(out, torch.Tensor) else out.pooler_output  # type: ignore[attr-defined]
+
+
 @dataclass
 class SaliencyOutput:
     gradcam: np.ndarray | None
@@ -73,7 +83,7 @@ class ClipSaliency:
         if not prompts:
             return None
         tok = self.processor(text=prompts, return_tensors="pt", padding=True).to(self.device)
-        emb = self.model.get_text_features(**tok)
+        emb = _embeds(self.model.get_text_features(**tok))
         return torch.nn.functional.normalize(emb, dim=-1)
 
     def _pixel_values(self, img: Image.Image) -> torch.Tensor:
@@ -92,7 +102,7 @@ class ClipSaliency:
     # ------------------------------------------------------------------ methods
 
     def gradcam(self, img: Image.Image) -> tuple[np.ndarray, float]:
-        """Grad-CAM over the last vision layer's patch tokens. Returns (grid map, target score)."""
+        """Grad-CAM over the patch tokens entering the last vision layer. Returns (map, score)."""
         pv = self._pixel_values(img)
         vision = self.model.vision_model
         captured: dict[str, torch.Tensor] = {}
@@ -102,10 +112,10 @@ class ClipSaliency:
             hs.retain_grad()
             captured["hs"] = hs
 
-        handle = vision.encoder.layers[-1].register_forward_hook(hook)
+        handle = vision.encoder.layers[-1].layer_norm1.register_forward_hook(hook)
         try:
             self.model.zero_grad(set_to_none=True)
-            img_emb = self.model.get_image_features(pixel_values=pv)
+            img_emb = _embeds(self.model.get_image_features(pixel_values=pv))
             score = self._target(img_emb)
             score.backward()
         finally:
@@ -156,6 +166,6 @@ class ClipSaliency:
         if cam is None and roll is not None:
             # still report the artefactness score when gradcam is off
             with torch.no_grad():
-                score = float(self._target(self.model.get_image_features(
-                    pixel_values=self._pixel_values(img))).item())
+                score = float(self._target(_embeds(self.model.get_image_features(
+                    pixel_values=self._pixel_values(img)))).item())
         return SaliencyOutput(gradcam=cam, rollout=roll, score=score)
