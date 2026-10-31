@@ -21,8 +21,9 @@ A weekend-scale experiment: **do humans and a vision model look at the same plac
   figures, and a tiny FastAPI viewer that sorts images by disagreement so the interesting cases
   surface first.
 
-The author is an ML/XAI person (Grad-CAM, attention maps, CLIP/DINOv2, React+FastAPI dashboards).
-Favour clarity and correctness over cleverness; this repo will be read by hiring engineers.
+The author works on explainable ML (Grad-CAM, attention maps, CLIP/DINOv2) and React+FastAPI
+dashboards. This is an open research repo: favour clarity and correctness over cleverness, and
+write code and docs for someone reading them cold.
 
 ## Repository layout
 
@@ -112,10 +113,11 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 - Tests for anything numerical (`metrics.py`, `heatmaps.py`). Model/network code is exercised by
   the CLI, not unit tests.
 
-## Definition of done (for the application)
+## Definition of done
 
 - `hvma evaluate --human dataset` runs on ≥30 images and `results/summary.csv` exists.
-- ~~At least one small live Locate job ran~~ — dropped: the project is cost-free (2026-10-31).
+- Everything reproduces for free from the public dataset; the paid live Locate job is out of
+  scope (2026-10-31).
 - `results/figures/disagreement_gallery_gradcam_l10.png` shows the 6 images where humans and the
   model disagree most, with a one-line interpretation each in the README. (`gradcam_l10`, not
   last-layer `gradcam`, whose top-6 are all edge bias; that gallery is kept for contrast.)
