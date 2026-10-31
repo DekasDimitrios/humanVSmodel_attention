@@ -41,6 +41,7 @@ results/                  raw job JSON, saliency .npy, overlays, CSV (gitignored
 ## Commands
 
 ```bash
+conda activate hvma                 # env setup: see README → Setup (torch from the cu126 index)
 pip install -e ".[dev]"            # install
 pytest -q                           # unit tests (no network, no GPU)
 hvma fetch --n 40                   # stream N samples from HF -> data/images + data/manifest.json
@@ -76,8 +77,10 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 
 ## Known uncertainties (resolve these first when picking the project up)
 
-- [ ] Exact shape/encoding of `coherence_heatmap` in the HF dataset (flat list? 2-D? resolution?).
-      `hvma inspect-dataset` prints it. Then fix `data.dataset_heatmap_to_array` if needed.
+- [x] Exact shape/encoding of `coherence_heatmap` in the HF dataset. **Resolved:** 2-D list of
+      float16 at image resolution (images are 1024x1024), dense, max ~0.16 before normalising;
+      ~30% of rows have none (`dataset.require_heatmap` skips them). Handled as-is by
+      `data.dataset_heatmap_to_array`; see `tests/test_data.py`.
 - [ ] Whether `create_locate_job_definition(datapoints=...)` accepts local file paths or only URLs.
       The docs show URLs. Test with ONE datapoint via `hvma estimate` (estimate does not charge).
 - [ ] Field names in Locate results (points per response, normalised vs. pixel coordinates).

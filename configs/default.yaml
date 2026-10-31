@@ -9,7 +9,10 @@ dataset:
   split: train
   n_samples: 40
   seed: 7
-  shuffle_buffer: 2000        # streaming shuffle buffer; bigger = more random, slower
+  # The 54 parquet shards are streamed in a seeded random order (no row shuffle buffer: it
+  # needs ~10 GB RAM with these 1024x1024 heatmaps). keep_prob adds randomness within a shard.
+  keep_prob: 0.25             # keep each streamed row with this probability
+  require_heatmap: true       # ~30% of rows have no coherence_heatmap; they can't be evaluated
   heatmap_column: coherence_heatmap
   # Optional filter: keep only images whose normalised coherence score is below this
   # (i.e. images people found *incoherent*, so there is something to point at). null = no filter.

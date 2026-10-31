@@ -39,13 +39,28 @@ class Sample:
     live_datapoint_ref: str | None = None
 
 
-def stream_rows(cfg: Config) -> Iterator[dict[str, Any]]:
-    """Yield raw rows from the HF dataset in streaming mode (lazy import keeps CLI startup fast)."""
-    from datasets import load_dataset
+def stream_rows(cfg: Config, shuffle: bool = True) -> Iterator[dict[str, Any]]:
+    """Yield rows from the HF dataset in streaming mode (lazy imports keep CLI startup fast).
 
-    ds = load_dataset(cfg.dataset.name, split=cfg.dataset.split, streaming=True)
-    ds = ds.shuffle(seed=cfg.dataset.seed, buffer_size=cfg.dataset.shuffle_buffer)
-    yield from ds
+    Each `coherence_heatmap` is a 1024x1024 float16 grid. `IterableDataset.shuffle()` (at any
+    buffer size) loses the Arrow->numpy fast path and peaks at ~10 GB RAM, so instead we shuffle
+    the *order of the parquet shards* with the seed and stream them unshuffled in numpy format
+    (~3 GB peak). `fetch` adds randomness within a shard by subsampling with `keep_prob`.
+    """
+    from datasets import load_dataset
+    from huggingface_hub import HfApi
+
+    d = cfg.dataset
+    shards = sorted(
+        f for f in HfApi().list_repo_files(d.name, repo_type="dataset")
+        if f.startswith(f"data/{d.split}-") and f.endswith(".parquet")
+    )
+    if not shards:
+        raise FileNotFoundError(f"no data/{d.split}-*.parquet shards in {d.name}")
+    if shuffle:
+        shards = [shards[i] for i in np.random.default_rng(d.seed).permutation(len(shards))]
+    ds = load_dataset(d.name, data_files={d.split: shards}, split=d.split, streaming=True)
+    yield from ds.with_format("numpy")
 
 
 def _score(row: dict[str, Any], key: str) -> float | None:
@@ -91,28 +106,37 @@ def dataset_heatmap_to_array(raw: Any, size: tuple[int, int]) -> np.ndarray | No
 def fetch(cfg: Config, n: int | None = None) -> list[Sample]:
     """Stream `n` samples, save images + dataset heatmaps, write the manifest."""
     n = n or cfg.dataset.n_samples
+    dcfg = cfg.dataset
     paths = cfg.paths
     paths.images_dir.mkdir(parents=True, exist_ok=True)
     human_dir = paths.human_dir / "dataset"
     human_dir.mkdir(parents=True, exist_ok=True)
+    rng = np.random.default_rng(dcfg.seed)
 
     samples: list[Sample] = []
-    for i, row in enumerate(stream_rows(cfg)):
+    for row in stream_rows(cfg):
         if len(samples) >= n:
             break
+        if rng.random() > dcfg.keep_prob:
+            continue
         coh = _score(row, "coherence_score_norm")
-        if cfg.dataset.max_coherence_score is not None and coh is not None:
-            if coh > cfg.dataset.max_coherence_score:
+        if dcfg.max_coherence_score is not None and coh is not None:
+            if coh > dcfg.max_coherence_score:
                 continue
+        raw_hm = row.get(dcfg.heatmap_column)
+        if dcfg.require_heatmap and (raw_hm is None or np.asarray(raw_hm).size == 0):
+            continue
         img = row["image"]
-        if not isinstance(img, Image.Image):
+        if isinstance(img, np.ndarray):
+            img = Image.fromarray(img)  # numpy format decodes images to HxWxC uint8
+        elif not isinstance(img, Image.Image):
             img = Image.open(img)  # datasets may hand back a file-like object
         img = img.convert("RGB")
         sid = f"s{len(samples):04d}"
         img_path = paths.images_dir / f"{sid}.png"
         img.save(img_path)
 
-        hm = dataset_heatmap_to_array(row.get(cfg.dataset.heatmap_column), (img.height, img.width))
+        hm = dataset_heatmap_to_array(raw_hm, (img.height, img.width))
         if hm is not None:
             np.save(human_dir / f"{sid}.npy", hm)
 
@@ -135,7 +159,7 @@ def fetch(cfg: Config, n: int | None = None) -> list[Sample]:
 
 def inspect_first_row(cfg: Config) -> dict[str, Any]:
     """Return type/shape info for every column of the first streamed row (no images saved)."""
-    row = next(iter(stream_rows(cfg)))
+    row = next(iter(stream_rows(cfg, shuffle=False)))
     info: dict[str, Any] = {}
     for k, v in row.items():
         if isinstance(v, Image.Image):

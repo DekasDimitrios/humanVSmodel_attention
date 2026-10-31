@@ -53,7 +53,8 @@ class DatasetCfg:
     split: str = "train"
     n_samples: int = 40
     seed: int = 7
-    shuffle_buffer: int = 2000
+    keep_prob: float = 0.25
+    require_heatmap: bool = True
     heatmap_column: str = "coherence_heatmap"
     max_coherence_score: float | None = None
 
