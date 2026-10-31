@@ -81,13 +81,15 @@ hvma serve                          # viewer at http://127.0.0.1:8000
       float16 at image resolution (images are 1024x1024), dense, max ~0.16 before normalising;
       ~30% of rows have none (`dataset.require_heatmap` skips them). Handled as-is by
       `data.dataset_heatmap_to_array`; see `tests/test_data.py`.
-- [ ] Whether `create_locate_job_definition(datapoints=...)` accepts local file paths or only URLs.
-      The docs show URLs. Test with ONE datapoint via `hvma estimate` (estimate does not charge).
+- [x] Whether `create_locate_job_definition(datapoints=...)` accepts local file paths.
+      **Resolved (SDK 3.27 source + bundled guide `python -m rapidata skill`):** yes, local paths
+      are uploaded. Still confirm with ONE datapoint via `hvma estimate --limit 1` (no charge).
 - [ ] Field names in Locate results (points per response, normalised vs. pixel coordinates).
-      The SDK's `Box` type uses 0–1 ratios, so points are probably normalised too; `extract_points`
-      handles both but check.
-- [ ] How result entries are keyed back to the input datapoints (`assetUrls`, original filename,
-      index order?). `rapidata_job.match_results_to_manifest` tries several strategies.
+      SDK 3.27 confirms the envelope (`{"results": [{..., "detailedResults": [...],
+      "privateMetadata": {...}}]}`) but not the per-point shape, which comes from the server.
+      `extract_points` handles both coordinate conventions; check with `--dump-schema`.
+- [x] How result entries are keyed back to the input datapoints. **Resolved:** each datapoint
+      is submitted with `private_metadata={"id": <sample id>}`, returned on every result entry.
 
 ## Conventions
 

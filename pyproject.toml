@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Dimitrios Dekas" }]
 dependencies = [
-  "rapidata>=2.0",
+  "rapidata>=3.27",   # private_metadata + API verified against 3.27
   "datasets>=2.19",
   "torch>=2.1",
   "transformers>=4.40",

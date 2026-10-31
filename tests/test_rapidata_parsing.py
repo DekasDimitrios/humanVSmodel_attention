@@ -35,6 +35,11 @@ def test_match_by_filename_then_fallback_to_order():
     m = match_results_to_manifest(entries, samples)
     assert m["s0000"] is entries[1] and m["s0001"] is entries[0]
 
+    # what we submit: private_metadata={"id": ...}, returned on each entry (SDK 3.27)
+    tagged = [{"privateMetadata": {"id": "s0001"}}, {"privateMetadata": {"id": "s0000"}}]
+    m1 = match_results_to_manifest(tagged, samples)
+    assert m1["s0000"] is tagged[1] and m1["s0001"] is tagged[0]
+
     anonymous = [{"foo": 1}, {"foo": 2}]
     m2 = match_results_to_manifest(anonymous, samples)
     assert m2["s0000"] is anonymous[0] and m2["s0001"] is anonymous[1]

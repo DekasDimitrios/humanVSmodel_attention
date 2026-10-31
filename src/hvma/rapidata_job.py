@@ -7,8 +7,10 @@ Grounded in the public docs (https://docs.rapidata.ai/examples/locate_job/ and
    any dict that has numeric `x` and `y` keys, treating values <= 1 as normalised and larger
    values as pixels. Run `hvma parse-results --dump-schema` after the first live job and
    tighten this once the real shape is known.
-2. How result entries map back to input datapoints. `match_results_to_manifest` tries
-   `assetUrls` filenames, any string field containing the sample id, and finally index order.
+2. How result entries map back to input datapoints. Each datapoint is submitted with
+   `private_metadata={"id": <sample id>}`, which the SDK (3.27) returns on every result entry, so
+   `match_results_to_manifest` finds the id among the entry's strings; it also tries `assetUrls`
+   filenames and finally falls back to index order.
 
 Guardrails (CLAUDE.md hard rules 1–2): `run_job` refuses without `confirm=True`, refuses above
 `max_datapoints`, and refuses when the SDK's estimate exceeds `max_cost`.
@@ -45,9 +47,8 @@ def _client():
 def datapoint_refs(samples: list[Sample]) -> list[str]:
     """What we hand the SDK as `datapoints`.
 
-    The docs show public URLs. The SDK is believed to also accept local paths and upload them;
-    if `hvma estimate` fails on local paths, host the PNGs (e.g. a public bucket) and set
-    `Sample.live_datapoint_ref` to the URL for each sample.
+    The SDK (3.27) accepts local paths and uploads them, as well as public URLs. To submit
+    hosted copies instead, set `Sample.live_datapoint_ref` to the URL for each sample.
     """
     return [s.live_datapoint_ref or s.image_path for s in samples]
 
@@ -63,6 +64,7 @@ def build_job_definition(client: Any, cfg: Config, samples: list[Sample]) -> Any
         instruction=rc.instruction,
         datapoints=datapoint_refs(samples),
         responses_per_datapoint=rc.responses_per_datapoint,
+        private_metadata=[{"id": s.id} for s in samples],  # echoed back on each result entry
     )
 
 
