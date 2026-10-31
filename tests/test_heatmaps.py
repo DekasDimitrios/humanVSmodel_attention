@@ -1,10 +1,20 @@
 import numpy as np
 import pytest
-
-from hvma.heatmaps import (argmax_point, center_prior, inpaint_tokens, normalize, outlier_tokens,
-                           points_to_heatmap, resize, texture_energy, threshold_topk,
-                           to_distribution, to_grid)
 from PIL import Image
+
+from hvma.heatmaps import (
+    argmax_point,
+    center_prior,
+    inpaint_tokens,
+    normalize,
+    outlier_tokens,
+    points_to_heatmap,
+    resize,
+    texture_energy,
+    threshold_topk,
+    to_distribution,
+    to_grid,
+)
 
 
 def test_normalize_range_and_constant():

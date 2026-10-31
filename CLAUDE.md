@@ -51,6 +51,7 @@ results/                  raw job JSON, saliency .npy, overlays, CSV (gitignored
 conda activate hvma                 # env setup: see README → Setup (torch from the cu126 index)
 pip install -e ".[dev]"            # install
 pytest -q                           # unit tests (no network, no GPU)
+ruff check .                        # lint (ruff pinned in the dev extra; CI runs both)
 hvma fetch --n 40                   # stream N samples from HF -> data/images + data/manifest.json
 hvma inspect-dataset                # print the raw shape/type of coherence_heatmap for one sample
 hvma saliency                       # compute model saliency for every image in the manifest
@@ -73,7 +74,7 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 3. **Secrets only via `.env`** (`RAPIDATA_CLIENT_ID`, `RAPIDATA_CLIENT_SECRET`). Never commit them,
    never print them. Authentication details: https://docs.rapidata.ai/authentication/
 4. **Verify SDK surface before trusting it.** Parts of the Rapidata result schema for Locate jobs
-   were not documented when this skeleton was written. Before relying on `rapidata_job.py`:
+   were not documented when this code was written. Before relying on `rapidata_job.py`:
    - run `/verify-sdk` (see `.claude/commands/verify-sdk.md`), or
    - `python -c "import rapidata, inspect; help(rapidata.RapidataClient)"` and inspect
      `create_locate_job_definition`, `assign_job`, `get_results`, `estimated_cost`.
@@ -93,7 +94,8 @@ hvma serve                          # viewer at http://127.0.0.1:8000
 - [x] Whether `create_locate_job_definition(datapoints=...)` accepts local file paths.
       **Resolved (SDK 3.27 source + bundled guide `python -m rapidata skill`):** yes, local paths
       are uploaded. Still confirm with ONE datapoint via `hvma estimate --limit 1` (no charge).
-- [ ] Field names in Locate results (points per response, normalised vs. pixel coordinates).
+- [ ] *Moot while the project is cost-free (only a live job would answer it).* Field names in
+      Locate results (points per response, normalised vs. pixel coordinates).
       SDK 3.27 confirms the envelope (`{"results": [{..., "detailedResults": [...],
       "privateMetadata": {...}}]}`) but not the per-point shape, which comes from the server.
       `extract_points` handles both coordinate conventions; check with `--dump-schema`.

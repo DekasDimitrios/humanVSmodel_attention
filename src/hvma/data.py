@@ -13,9 +13,9 @@ form so the function can be tightened once seen.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -120,9 +120,9 @@ def fetch(cfg: Config, n: int | None = None) -> list[Sample]:
         if rng.random() > dcfg.keep_prob:
             continue
         coh = _score(row, "coherence_score_norm")
-        if dcfg.max_coherence_score is not None and coh is not None:
-            if coh > dcfg.max_coherence_score:
-                continue
+        if (dcfg.max_coherence_score is not None and coh is not None
+                and coh > dcfg.max_coherence_score):
+            continue
         raw_hm = row.get(dcfg.heatmap_column)
         if dcfg.require_heatmap and (raw_hm is None or np.asarray(raw_hm).size == 0):
             continue

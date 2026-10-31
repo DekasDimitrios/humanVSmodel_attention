@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import typer
 
-from .config import Config, load_config, have_rapidata_credentials
+from .config import Config, have_rapidata_credentials, load_config
 
 app = typer.Typer(add_completion=False, no_args_is_help=True,
                   help="Human vs. model attention on AI-generated images.")
@@ -113,7 +114,8 @@ def _require_creds() -> None:
 def estimate(limit: int = typer.Option(None, help="submit only the first N samples")) -> None:
     """Cost estimate for the live Locate job. Charges nothing, launches nothing."""
     _require_creds()
-    from .rapidata_job import RefusedError, estimate as _estimate
+    from .rapidata_job import RefusedError
+    from .rapidata_job import estimate as _estimate
 
     samples = _live_samples(limit)
     try:
@@ -131,7 +133,8 @@ def run(yes: bool = typer.Option(False, "--yes", help="actually launch the paid 
         limit: int = typer.Option(None, help="submit only the first N samples")) -> None:
     """Launch the live Locate job (prints the estimate first; requires --yes)."""
     _require_creds()
-    from .rapidata_job import RefusedError, estimate as _estimate, run_job
+    from .rapidata_job import RefusedError, run_job
+    from .rapidata_job import estimate as _estimate
 
     samples = _live_samples(limit)
     est = _estimate(cfg(), samples)
@@ -151,7 +154,8 @@ def parse_results(raw: Path = typer.Argument(..., exists=True),
                                                    help="print the JSON type-tree and exit")) -> None:
     """Raw Locate results JSON → per-sample points + heatmaps under results/human/live/."""
     from .data import load_manifest
-    from .rapidata_job import parse_results as _parse, schema_sketch
+    from .rapidata_job import parse_results as _parse
+    from .rapidata_job import schema_sketch
 
     if dump_schema:
         with raw.open() as fh:
@@ -191,7 +195,7 @@ def evaluate(human: str = typer.Option("dataset", help="'dataset' or 'live'")) -
 def _echo_row(agg: dict) -> None:
     def f(key: str, spec: str) -> str:
         v = agg.get(key)
-        return format(v, spec) if isinstance(v, float) and v == v else "  –  "
+        return format(v, spec) if isinstance(v, float) and not math.isnan(v) else "  –  "
 
     typer.echo(f"  {agg['method']:18s} cc={f('cc', '6.3f')} iou@20={f('iou@20', '.3f')} "
                f"pointing={f('pointing_game', '.2f')} js={f('js_divergence', '.3f')} "
@@ -201,12 +205,19 @@ def _echo_row(agg: dict) -> None:
 
 @app.command()
 def report(human: str = typer.Option("dataset", help="'dataset' or 'live'"),
-           method: list[str] = typer.Option(  # noqa: B008
+           method: list[str] = typer.Option(
                ["gradcam", "gradcam_l10"],
                help="method(s) to draw a disagreement gallery for; repeat the flag for several")) -> None:
     """Overlays, figures, and results/agreement.json for the viewer."""
-    from .report import (ablation_chart, ablation_gallery, ablation_summary, disagreement_gallery,
-                         metric_histograms, write_agreement_json, write_overlays)
+    from .report import (
+        ablation_chart,
+        ablation_gallery,
+        ablation_summary,
+        disagreement_gallery,
+        metric_histograms,
+        write_agreement_json,
+        write_overlays,
+    )
     from .report import evaluate as _evaluate
 
     c = cfg()

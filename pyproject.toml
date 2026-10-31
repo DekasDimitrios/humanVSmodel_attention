@@ -28,7 +28,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "ruff>=0.4", "ipykernel"]
+dev = ["pytest>=8.0", "ruff~=0.17.3"]  # ruff pinned: its default rule set changes between releases
 
 [project.scripts]
 hvma = "hvma.cli:app"
@@ -39,6 +39,15 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+# int(round(x)) is deliberate: x is often a numpy scalar, and on numpy < 2 round() of one
+# returns a float, which can't index an array.
+ignore = ["RUF046"]
+
+[tool.ruff.lint.flake8-bugbear]
+# typer declares CLI options as default values; that is its documented idiom.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

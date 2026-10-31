@@ -18,6 +18,7 @@ Guardrails (CLAUDE.md hard rules 1–2): `run_job` refuses without `confirm=True
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
 from collections.abc import Iterator
@@ -94,10 +95,8 @@ def run_job(cfg: Config, samples: list[Sample], confirm: bool = False) -> Path:
         )
     audience = client.audience.get_audience_by_id(cfg.rapidata.audience_id)
     job = audience.assign_job(jd)
-    try:
+    with contextlib.suppress(Exception):  # the progress bar is cosmetic (needs a TTY)
         job.display_progress_bar()
-    except Exception:  # noqa: BLE001 — progress bar is cosmetic (needs a TTY)
-        pass
     results = job.get_results()
     raw = _to_jsonable(results)
     out = cfg.paths.results_dir / cfg.rapidata.raw_results_file

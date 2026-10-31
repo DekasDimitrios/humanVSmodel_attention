@@ -167,6 +167,7 @@ does its job. Paired Wilcoxon tests against the crowd on the same images are in
 ## Notes
 
 - Built with Claude Code; `CLAUDE.md` holds the working agreement.
+- Code: MIT (see `LICENSE`).
 - Not affiliated with Rapidata. Dataset and the images in the gallery:
   [`Rapidata/text-2-image-Rich-Human-Feedback`](https://huggingface.co/datasets/Rapidata/text-2-image-Rich-Human-Feedback),
   © Rapidata, Apache-2.0.

@@ -2,8 +2,18 @@ import numpy as np
 import pytest
 
 from hvma.heatmaps import center_prior, points_to_heatmap
-from hvma.metrics import (border_mass, cc, compute_all, disagreement_score, iou_topk,
-                          js_divergence, nss, pointing_game, spearman, texture_affinity)
+from hvma.metrics import (
+    border_mass,
+    cc,
+    compute_all,
+    disagreement_score,
+    iou_topk,
+    js_divergence,
+    nss,
+    pointing_game,
+    spearman,
+    texture_affinity,
+)
 
 
 @pytest.fixture

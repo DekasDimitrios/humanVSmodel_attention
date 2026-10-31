@@ -22,7 +22,7 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
-# notebooks
+# jupyter (for local exploration; none are committed)
 .ipynb_checkpoints/
 
 # model caches
