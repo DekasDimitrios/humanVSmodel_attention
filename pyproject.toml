@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hvma"
+version = "0.1.0"
+description = "Human vs. model attention on AI-generated images, using Rapidata's crowd and CLIP saliency."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Dimitrios Dekas" }]
+dependencies = [
+  "rapidata>=2.0",
+  "datasets>=2.19",
+  "torch>=2.1",
+  "transformers>=4.40",
+  "numpy>=1.24",
+  "scipy>=1.10",
+  "Pillow>=10.0",
+  "matplotlib>=3.8",
+  "typer>=0.12",
+  "pyyaml>=6.0",
+  "python-dotenv>=1.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4", "ipykernel"]
+
+[project.scripts]
+hvma = "hvma.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

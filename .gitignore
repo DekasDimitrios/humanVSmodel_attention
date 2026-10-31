@@ -1,0 +1,28 @@
+# secrets
+.env
+
+# data & results (keep the READMEs)
+data/*
+!data/README.md
+results/*
+!results/README.md
+
+# python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# notebooks
+.ipynb_checkpoints/
+
+# model caches
+.cache/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/

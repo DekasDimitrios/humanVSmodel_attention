@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Human vs model attention</title>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --fg:#e6e6e6; --muted:#8a919e; --accent:#f2a93b; --line:#262b35; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f7f7f5; --card:#fff; --fg:#1b1b1b; --muted:#6b7280; --accent:#b4660b; --line:#e5e7eb; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 ui-sans-serif,system-ui,sans-serif; }
+  header { padding:18px 24px 10px; border-bottom:1px solid var(--line); display:flex; gap:20px; align-items:baseline; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0; font-weight:600; }
+  .sub { color:var(--muted); }
+  .controls { margin-left:auto; display:flex; gap:12px; align-items:center; }
+  select, input[type=range] { background:var(--card); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:4px 8px; }
+  main { padding:16px 24px; display:grid; gap:14px; }
+  .row { display:grid; grid-template-columns: 1.2fr repeat(3, 1fr); gap:10px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; align-items:start; }
+  .row img { width:100%; aspect-ratio:1/1; object-fit:contain; background:#000; border-radius:6px; }
+  .meta { font-size:12px; color:var(--muted); }
+  .meta b { color:var(--fg); font-weight:600; }
+  .metrics { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px; margin-top:6px; }
+  .metrics span:nth-child(odd) { color:var(--muted); }
+  .cap { font-size:12px; color:var(--muted); margin-top:4px; }
+  .dis { display:inline-block; padding:1px 7px; border-radius:999px; background:var(--accent); color:#000; font-weight:600; font-size:11px; }
+  .prompt { margin-top:6px; font-size:12px; }
+  @media (max-width:900px) { .row { grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div><h1>Do humans look where the model looks?</h1>
+  <div class="sub" id="status">loading results/agreement.json …</div></div>
+  <div class="controls">
+    <label>sort by <select id="sort">
+      <option value="disagreement">disagreement ↓</option>
+      <option value="cc">correlation ↑</option>
+      <option value="iou@20">IoU@20 ↑</option>
+      <option value="coherence">coherence score ↑</option>
+    </select></label>
+    <label>method <select id="method"><option>gradcam</option><option>rollout</option></select></label>
+  </div>
+</header>
+<main id="grid"></main>
+
+<script>
+const fmt = v => (v === null || v === undefined || Number.isNaN(v)) ? '–' : (typeof v === 'number' ? v.toFixed(2) : v);
+let DATA = null;
+
+async function load() {
+  const r = await fetch('/api/agreement');
+  if (!r.ok) { document.getElementById('status').textContent = await r.text(); return; }
+  DATA = await r.json();
+  document.getElementById('status').textContent =
+    `${DATA.samples.length} images · human source: ${DATA.human_source}`;
+  render();
+}
+
+function render() {
+  const method = document.getElementById('method').value;
+  const sortKey = document.getElementById('sort').value;
+  const rows = DATA.samples.filter(s => s.methods[method]);
+  rows.sort((a, b) => {
+    if (sortKey === 'disagreement') return b.methods[method].disagreement - a.methods[method].disagreement;
+    if (sortKey === 'coherence') return (a.coherence_score ?? 9) - (b.coherence_score ?? 9);
+    return (b.methods[method][sortKey] ?? -9) - (a.methods[method][sortKey] ?? -9);
+  });
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  for (const s of rows) {
+    const m = s.methods[method];
+    const el = document.createElement('div');
+    el.className = 'row';
+    el.innerHTML = `
+      <div>
+        <img src="/${s.image}" alt="${s.id}">
+        <div class="meta"><b>${s.id}</b> <span class="dis">disagreement ${fmt(m.disagreement)}</span></div>
+        <div class="prompt">${escapeHtml(s.prompt)}</div>
+        <div class="metrics">
+          <span>cc</span><span>${fmt(m.cc)}</span>
+          <span>spearman</span><span>${fmt(m.spearman)}</span>
+          <span>IoU@10/20/30</span><span>${fmt(m['iou@10'])} / ${fmt(m['iou@20'])} / ${fmt(m['iou@30'])}</span>
+          <span>pointing game</span><span>${fmt(m.pointing_game)}</span>
+          <span>JS div.</span><span>${fmt(m.js_divergence)}</span>
+          ${m.nss !== undefined ? `<span>NSS</span><span>${fmt(m.nss)}</span>` : ''}
+          <span>dataset coherence</span><span>${fmt(s.coherence_score)}</span>
+        </div>
+      </div>
+      <div><img src="/results/${s.human_overlay}" alt="human"><div class="cap">humans (${DATA.human_source})</div></div>
+      <div><img src="/results/${m.overlay}" alt="model"><div class="cap">model · ${method}</div></div>
+      <div><img src="/results/overlays/${s.id}.${method === 'gradcam' ? 'rollout' : 'gradcam'}.jpg" alt="other"><div class="cap">model · ${method === 'gradcam' ? 'rollout' : 'gradcam'} (for reference)</div></div>`;
+    grid.appendChild(el);
+  }
+}
+
+function escapeHtml(s) { return (s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+document.getElementById('sort').addEventListener('change', render);
+document.getElementById('method').addEventListener('change', render);
+load();
+</script>
+</body>
+</html>

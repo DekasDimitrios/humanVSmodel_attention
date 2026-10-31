@@ -1,0 +1,41 @@
+# All tunables live here. Override with `hvma --config path/to/other.yaml ...`.
+
+paths:
+  data_dir: data
+  results_dir: results
+
+dataset:
+  name: Rapidata/text-2-image-Rich-Human-Feedback
+  split: train
+  n_samples: 40
+  seed: 7
+  shuffle_buffer: 2000        # streaming shuffle buffer; bigger = more random, slower
+  heatmap_column: coherence_heatmap
+  # Optional filter: keep only images whose normalised coherence score is below this
+  # (i.e. images people found *incoherent*, so there is something to point at). null = no filter.
+  max_coherence_score: null
+
+heatmap:
+  sigma_frac: 0.04            # gaussian sigma as a fraction of image width when turning points into a map
+  topk_fracs: [0.1, 0.2, 0.3] # fractions of pixels kept when thresholding for IoU
+
+model:
+  name: openai/clip-vit-base-patch16   # patch16 -> 14x14 saliency grid; patch32 is faster but 7x7
+  device: auto                         # auto | cpu | cuda | mps
+  methods: [gradcam, rollout]
+  # The saliency target is the CLIP similarity to `positive` prompts minus `negative` prompts.
+  positive_prompts:
+    - "a photo with visual glitches, distorted artifacts and deformed objects"
+    - "an AI-generated image with errors, extra fingers, warped text and broken geometry"
+  negative_prompts:
+    - "a clean, realistic, coherent photo with no errors"
+  rollout_discard_ratio: 0.9           # drop the lowest 90% attention values per layer before rollout
+
+rapidata:
+  audience_id: global
+  job_name: "Human vs model attention — artefact localisation"
+  instruction: "Tap on any part of the image that looks wrong, glitchy or artificial."
+  responses_per_datapoint: 12
+  max_datapoints: 40          # hard ceiling; `hvma run` refuses above this
+  max_cost: 15.0              # in your billing currency; `hvma run` refuses above this
+  raw_results_file: raw_locate.json
